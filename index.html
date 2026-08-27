@@ -150,7 +150,7 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News screens headlines for graphic violence, tragedy, disasters and other distressing subjects before showing them here. The filter is intentionally conservative. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Uplifting now requires a genuinely positive or constructive headline, not simply the absence of a bad word. Bright News also blocks crime, lockdowns, weapons, arrests, tragedy, fear-heavy language and strongly negative outcomes. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
@@ -162,7 +162,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode3") || "uplifting";
+  let mode = localStorage.getItem("bnMode4") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -170,54 +170,84 @@
   let lastRssRequestAt = 0;
   let lastGoodItems = [];
   let lastGoodSource = "";
-  let lastGoodKey = "";
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved3") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved4") || "[]"));
   const expanded = new Set();
 
-  const distress = [
-    "killed","killing","kills","dead","death","deaths","died","murder","shooting","shooter","gunman",
-    "stabbing","stabbed","bomb","bombing","missile","war ","warfare","troops","hostage","kidnap",
-    "rape","sexual assault","abuse","fatal","crash","collision","injured","injuries","wildfire",
-    "earthquake","tornado","hurricane","flooding","disaster","tragedy","funeral","outbreak","suicide",
-    "terror","terrorist","execution","riot","riots","massacre","assaulted","explosion","airstrike"
+  // Always blocked from the visible Bright News feed.
+  const hardBlock = [
+    "killed","killing","kills","dead","death","deaths","died","murder","murdered","shooting","shooter",
+    "gunman","gunfire","stabbing","stabbed","bomb","bombing","missile","war ","warfare","troops",
+    "hostage","kidnap","rape","sexual assault","abuse","fatal","crash","collision","injured","injuries",
+    "wildfire","earthquake","tornado","hurricane","flooding","disaster","tragedy","funeral","outbreak",
+    "suicide","terror","terrorist","execution","riot","riots","massacre","assaulted","explosion","airstrike",
+    "lockdown","weapon","weapons"," gun ","guns","arrested","arrest ","arrests","disturbance","crime",
+    "criminal","police search","suspect","suspects","charged with","charges filed","jail","prison",
+    "threat","threats","threatened","evacuated","evacuation","missing person","amber alert","manhunt"
+  ];
+
+  // Not necessarily traumatic, but these are not appropriate for Uplifting.
+  const negativeFrame = [
+    "problem","problems","crisis","shortage","shortages","cuts","cutting","layoff","layoffs","laid off",
+    "closes","closing","closure","shuts down","bankruptcy","bankrupt","lawsuit","sues ","suing","scandal",
+    "controversy","controversial","warning","warns","concern","concerns","fear","fears","angry","anger",
+    "outrage","slams","lashes out","backlash","struggle","struggles","struggling","fails","failed","failure",
+    "decline","declines","drops","drop in","falls","falling","high price","higher prices","price hike",
+    "costs rise","rising costs","expensive","gut it","guts it","axed","scrapped","canceled","cancelled",
+    "loss","loses","lost ","defeat","defeated","damaging","damage","damaged","fraud","stolen","theft"
+  ];
+
+  // Uplifting stories must contain at least one constructive cue.
+  const positiveSignals = [
+    "breakthrough","discovery","discovers","discovered","innovation","innovative","achievement","achieves",
+    "award","awarded","wins","winner","victory","record","milestone","success","successful","progress",
+    "improves","improvement","improved","expands","expansion","opens","opening","reopens","reopening",
+    "launches","launch","new program","new initiative","grant","funding","donation","donates","volunteer",
+    "volunteers","community partnership","partnership","partners","celebrates","celebration","festival",
+    "restored","restoration","revitalized","revitalization","rescue","rescued","saved","adopted","adoption",
+    "conservation","protected","protection","recovery","rebounds","returns","grows","growth","surges",
+    "honored","honours","honors","recognition","scholarship","graduates","graduation","students shine",
+    "helps","helping","support","supports","supported","hope","hopeful","promising","encouraging",
+    "clean energy","renewable","solar","trees planted","tree planting","community garden","free program",
+    "free event","new library","library expands","healthier","safer","accessible","accessibility",
+    "kindness","reunited","reunion","celebrates opening","kicks off","highlighting community partnerships"
   ];
 
   const queries = {
     All:{
-      uplifting:'("good news" OR breakthrough OR discovery OR innovation OR achievement OR conservation OR volunteer OR restored OR "community garden" OR rescue OR "new program") when:2d',
+      uplifting:'(breakthrough OR discovery OR innovation OR achievement OR award OR volunteer OR partnership OR conservation OR restored OR rescue OR "new program" OR "community garden" OR opens OR reopens OR celebrates OR scholarship OR milestone) when:2d',
       gentle:'(discovery OR research OR community OR education OR innovation OR culture OR environment OR local OR opens OR launches OR improves) when:2d',
       need:'(science OR technology OR weather OR business OR education OR transportation OR health OR consumer) when:1d'
     },
     Science:{
-      uplifting:'(breakthrough OR discovery OR innovation OR research OR scientist OR space) when:3d',
+      uplifting:'(breakthrough OR discovery OR innovation OR promising OR achievement OR milestone OR award OR successful OR improves) (science OR research OR space OR medicine OR technology) when:3d',
       gentle:'(science OR research OR space OR technology OR medicine OR discovery) when:2d',
       need:'(science OR technology OR health OR research OR weather) when:1d'
     },
     Community:{
-      uplifting:'(community OR volunteer OR donation OR library OR school OR neighborhood OR nonprofit OR "new program") when:3d',
+      uplifting:'(volunteer OR donation OR grant OR partnership OR "new program" OR opens OR reopens OR celebrates OR award OR scholarship OR restoration OR "community garden" OR expansion) (community OR school OR library OR neighborhood OR nonprofit OR town OR city) when:3d',
       gentle:'(community OR local OR school OR library OR neighborhood OR education OR business) when:2d',
       need:'(local OR community OR education OR transportation OR consumer) when:1d'
     },
     Animals:{
-      uplifting:'(animal OR wildlife OR rescue OR conservation OR dog OR cat OR turtle OR whale OR bird) when:3d',
+      uplifting:'(rescue OR rescued OR adoption OR recovery OR conservation OR protected OR rebound OR returns OR milestone) (animal OR wildlife OR dog OR cat OR turtle OR whale OR bird OR species) when:3d',
       gentle:'(animals OR wildlife OR conservation OR zoo OR pets OR species) when:2d',
       need:'(wildlife OR animal OR conservation OR environment) when:2d'
     },
     Environment:{
-      uplifting:'(conservation OR renewable OR solar OR habitat OR trees OR restoration OR sustainability OR "clean water") when:3d',
+      uplifting:'(conservation OR renewable OR solar OR restoration OR protected OR clean OR planted OR recovery OR improvement OR milestone) (environment OR habitat OR trees OR water OR nature OR energy) when:3d',
       gentle:'(environment OR climate OR renewable OR nature OR conservation OR energy) when:2d',
       need:'(environment OR weather OR energy OR climate OR transportation) when:1d'
     },
     Culture:{
-      uplifting:'(art OR music OR theater OR theatre OR museum OR festival OR historic OR author OR restaurant) when:3d',
+      uplifting:'(opens OR reopens OR celebrates OR award OR festival OR restored OR restoration OR milestone OR debut OR honored) (art OR music OR theater OR theatre OR museum OR book OR author OR restaurant OR culture) when:3d',
       gentle:'(culture OR art OR music OR film OR theater OR museum OR books OR food) when:2d',
       need:'(culture OR entertainment OR arts OR media) when:1d'
     },
     Sports:{
-      uplifting:'(wins OR victory OR championship OR milestone OR record OR comeback OR award) sports when:2d',
+      uplifting:'(wins OR victory OR championship OR milestone OR record OR comeback OR award OR honored) sports when:2d',
       gentle:'(sports OR team OR player OR tournament OR championship) when:1d',
       need:'(sports OR league OR team OR tournament) when:1d'
     }
@@ -227,9 +257,34 @@
 
   function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
 
-  function safeTitle(title){
-    const t = (" " + String(title||"").toLowerCase() + " ").replace(/[–—]/g,"-");
-    return !distress.some(w => t.includes(w));
+  function normalized(text){
+    return " " + String(text || "").toLowerCase().replace(/[–—]/g,"-").replace(/\s+/g," ") + " ";
+  }
+
+  function hasAny(text, list){
+    const t = normalized(text);
+    return list.some(word => t.includes(word));
+  }
+
+  function passesBrightShield(title, requestedMode){
+    if (hasAny(title, hardBlock)) return false;
+
+    if (requestedMode === "uplifting") {
+      if (hasAny(title, negativeFrame)) return false;
+      // Positive-only mode: a headline must actually signal something constructive.
+      if (!hasAny(title, positiveSignals)) return false;
+    }
+
+    if (requestedMode === "gentle") {
+      // Gentle can include neutral everyday news, but not strongly negative framing.
+      const extraGentleBlocks = [
+        "crisis","layoff","layoffs","bankruptcy","scandal","outrage","backlash",
+        "damaging","fraud","theft","lawsuit","price hike","high price"
+      ];
+      if (hasAny(title, extraGentleBlocks)) return false;
+    }
+
+    return true;
   }
 
   function decodeEntities(value){
@@ -254,14 +309,9 @@
 
   function parseDate(value){
     const s = String(value || "").trim();
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) {
-      return new Date(s.replace(" ","T") + "Z");
-    }
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) return new Date(s.replace(" ","T") + "Z");
     if (/^\d{8}T\d{6}Z$/.test(s)) {
-      return new Date(Date.UTC(
-        +s.slice(0,4), +s.slice(4,6)-1, +s.slice(6,8),
-        +s.slice(9,11), +s.slice(11,13), +s.slice(13,15)
-      ));
+      return new Date(Date.UTC(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(9,11),+s.slice(11,13),+s.slice(13,15)));
     }
     return new Date(s);
   }
@@ -269,7 +319,7 @@
   function timeAgo(date){
     const d = parseDate(date);
     if(isNaN(d)) return "recent";
-    const min = Math.max(0, Math.round((Date.now()-d.getTime())/60000));
+    const min = Math.max(0,Math.round((Date.now()-d.getTime())/60000));
     if(min<60) return min<=1?"just now":`${min} min ago`;
     const h=Math.round(min/60);
     if(h<24) return `${h} hr${h===1?"":"s"} ago`;
@@ -278,12 +328,7 @@
   }
 
   function currentKey(){
-    return searchTerm ? `search|${searchTerm.toLowerCase()}` : `${mode}|${category}`;
-  }
-
-  function currentQuery(){
-    if(searchTerm) return `${searchTerm} when:3d`;
-    return queries[category]?.[mode] || queries.All[mode];
+    return searchTerm ? `search|${mode}|${searchTerm.toLowerCase()}` : `${mode}|${category}`;
   }
 
   function feedURL(q){
@@ -291,212 +336,162 @@
   }
 
   async function spacedFetch(url, timeout=14000){
-    const wait = Math.max(0, 1800 - (Date.now() - lastRssRequestAt));
+    const wait=Math.max(0,1800-(Date.now()-lastRssRequestAt));
     if(wait) await sleep(wait);
-    lastRssRequestAt = Date.now();
-
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), timeout);
+    lastRssRequestAt=Date.now();
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),timeout);
     try{
-      const res = await fetch(url,{signal:controller.signal,cache:"no-store"});
+      const res=await fetch(url,{signal:controller.signal,cache:"no-store"});
       if(!res.ok) throw new Error(`http-${res.status}`);
       return await res.json();
-    } finally {
-      clearTimeout(timer);
-    }
+    } finally { clearTimeout(timer); }
   }
 
-  async function googleRSS(key, token, requestedCategory=category, requestedMode=mode, requestedSearch=searchTerm){
+  async function googleRSS(key, token, requestedCategory, requestedMode, requestedSearch){
     if(feedCache.has(key)) return feedCache.get(key);
     if(pending.has(key)) return pending.get(key);
 
-    const q = requestedSearch
+    const q=requestedSearch
       ? `${requestedSearch} when:3d`
       : (queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
 
-    const promise = (async()=>{
-      const rss = feedURL(q);
-      const endpoint = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rss)}`;
-
+    const promise=(async()=>{
+      const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}`;
       let data;
-      try{
-        data = await spacedFetch(endpoint);
-      } catch(firstError) {
-        await sleep(2200);
-        data = await spacedFetch(endpoint);
-      }
+      try{ data=await spacedFetch(endpoint); }
+      catch(e){ await sleep(2200); data=await spacedFetch(endpoint); }
 
-      if(token !== requestToken && requestedCategory === category && requestedMode === mode && requestedSearch === searchTerm){
-        throw new Error("superseded");
-      }
-      if(!data || data.status !== "ok" || !Array.isArray(data.items)) {
-        throw new Error((data && data.message) || "rss");
-      }
+      if(!data || data.status!=="ok" || !Array.isArray(data.items)) throw new Error("rss");
 
-      const items = data.items.map((item,i)=>{
+      const items=data.items.map((item,i)=>{
         const sp=splitPublisher(item.title);
         return {
-          id:item.guid || item.link || `${key}-${i}`,
-          title:sp.headline,
-          publisher:sp.publisher,
-          url:item.link,
-          date:item.pubDate,
-          emoji:emojis[requestedCategory] || "✨",
-          tag: requestedCategory==="All"
+          id:item.guid||item.link||`${key}-${i}`,
+          title:sp.headline,publisher:sp.publisher,url:item.link,date:item.pubDate,
+          emoji:emojis[requestedCategory]||"✨",
+          tag:requestedCategory==="All"
             ? (requestedMode==="uplifting"?"Bright Pick":requestedMode==="gentle"?"Gentle News":"Need-to-Know")
             : requestedCategory
         };
       });
 
-      const safe = dedupeAndFilter(items);
+      const safe=dedupeAndFilter(items,requestedMode);
       if(safe.length) feedCache.set(key,safe);
       return safe;
     })();
 
     pending.set(key,promise);
-    try{
-      return await promise;
-    } finally {
-      pending.delete(key);
-    }
+    try{return await promise} finally{pending.delete(key)}
   }
 
-  async function gdeltBackup(token, requestedCategory=category, requestedMode=mode, requestedSearch=searchTerm){
-    let q = requestedSearch
+  async function gdeltBackup(token,requestedCategory,requestedMode,requestedSearch){
+    let q=requestedSearch
       ? requestedSearch
-      : (queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
+      : (queries[requestedCategory]?.[requestedMode]||queries.All[requestedMode]);
 
-    let keywords = q.replace(/when:\d+d/g,"").replace(/[()"]/g," ").replace(/\s+/g," ").trim();
-    if(keywords.length > 180) keywords = keywords.slice(0,180);
+    let keywords=q.replace(/when:\d+d/g,"").replace(/[()"]/g," ").replace(/\s+/g," ").trim();
+    if(keywords.length>180) keywords=keywords.slice(0,180);
 
-    const tone = requestedMode==="uplifting" ? " tone>2" : requestedMode==="gentle" ? " tone>0" : " toneabs<5";
-    const params = new URLSearchParams({
-      query:`${keywords}${tone} sourcelang:english`,
-      mode:"artlist",format:"json",maxrecords:"25",timespan:"3d",sort:"datedesc"
+    const tone=requestedMode==="uplifting"?" tone>3":requestedMode==="gentle"?" tone>0":" toneabs<5";
+    const params=new URLSearchParams({
+      query:`${keywords}${tone} sourcelang:english`,mode:"artlist",format:"json",
+      maxrecords:"30",timespan:"3d",sort:"datedesc"
     });
 
-    const controller = new AbortController();
+    const controller=new AbortController();
     const timer=setTimeout(()=>controller.abort(),9000);
     try{
-      const res=await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`,{
-        signal:controller.signal,cache:"no-store"
-      });
+      const res=await fetch(`https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`,{signal:controller.signal,cache:"no-store"});
       if(!res.ok) throw new Error("gdelt");
       const data=await res.json();
-      if(token!==requestToken && requestedCategory===category) throw new Error("superseded");
       const arr=Array.isArray(data.articles)?data.articles:[];
       return dedupeAndFilter(arr.map((a,i)=>({
-        id:a.url || `${requestedCategory}-${i}`,
-        title:decodeEntities(a.title),
-        publisher:a.domain||"Publisher",
-        url:a.url,
-        date:a.seendate,
-        emoji:emojis[requestedCategory]||"✨",
+        id:a.url||`${requestedCategory}-${i}`,title:decodeEntities(a.title),publisher:a.domain||"Publisher",
+        url:a.url,date:a.seendate,emoji:emojis[requestedCategory]||"✨",
         tag:requestedCategory==="All"?"Backup Feed":requestedCategory
-      })));
-    } finally { clearTimeout(timer); }
+      })),requestedMode);
+    } finally{clearTimeout(timer)}
   }
 
-  function dedupeAndFilter(items){
+  function dedupeAndFilter(items,requestedMode){
     const seen=new Set();
-    return items.filter(x=>x&&x.title&&x.url&&safeTitle(x.title)).filter(x=>{
-      const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
-      if(!k||seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    }).slice(0,20);
+    return items
+      .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode))
+      .filter(x=>{
+        const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+        if(!k||seen.has(k)) return false;
+        seen.add(k);return true;
+      })
+      .slice(0,20);
   }
 
   async function load(options={}){
-    const {background=false, requestedCategory=category, requestedMode=mode, requestedSearch=searchTerm} = options;
-    const key = requestedSearch ? `search|${requestedSearch.toLowerCase()}` : `${requestedMode}|${requestedCategory}`;
-    const token = background ? requestToken : ++requestToken;
+    const requestedCategory=options.requestedCategory??category;
+    const requestedMode=options.requestedMode??mode;
+    const requestedSearch=options.requestedSearch??searchTerm;
+    const background=!!options.background;
+    const key=requestedSearch?`search|${requestedMode}|${requestedSearch.toLowerCase()}`:`${requestedMode}|${requestedCategory}`;
+    const token=background?requestToken:++requestToken;
 
     if(!background){
       $("empty").style.display="none";
       $("loading").classList.add("show");
       $("refresh").disabled=true;
-      $("loadingText").textContent=requestedSearch
-        ? `Searching for “${requestedSearch}”…`
-        : requestedCategory==="All"
-          ? "Finding today's brighter stories…"
-          : `Loading ${requestedCategory} stories…`;
-
-      if(!lastGoodItems.length){
-        $("stories").innerHTML="";
-        $("count").textContent="Loading…";
-      } else {
-        $("count").textContent=`Loading ${requestedCategory==="All"?"news":requestedCategory}…`;
-      }
+      $("loadingText").textContent=requestedSearch?`Searching for “${requestedSearch}”…`
+        :requestedCategory==="All"?"Finding today's brighter stories…":`Loading ${requestedCategory} stories…`;
+      if(!lastGoodItems.length){$("stories").innerHTML="";$("count").textContent="Loading…"}
+      else $("count").textContent=`Loading ${requestedCategory==="All"?"news":requestedCategory}…`;
     }
 
-    let items=[], source="Google News";
+    let items=[],source="Google News";
     try{
-      items=await googleRSS(key, token, requestedCategory, requestedMode, requestedSearch);
+      items=await googleRSS(key,token,requestedCategory,requestedMode,requestedSearch);
       if(!items.length) throw new Error("noitems");
     }catch(e){
-      if(e.message==="superseded") return;
       try{
         source="Backup live feed";
-        items=await gdeltBackup(token, requestedCategory, requestedMode, requestedSearch);
-      }catch(e2){
-        if(e2.message==="superseded") return;
-        items=[];
-      }
+        items=await gdeltBackup(token,requestedCategory,requestedMode,requestedSearch);
+      }catch(e2){items=[]}
     }
 
     if(items.length){
       feedCache.set(key,items);
       if(!background && requestedCategory===category && requestedMode===mode && requestedSearch===searchTerm){
-        lastGoodItems=items;
-        lastGoodSource=source;
-        lastGoodKey=key;
-        $("loading").classList.remove("show");
-        $("refresh").disabled=false;
+        lastGoodItems=items;lastGoodSource=source;
+        $("loading").classList.remove("show");$("refresh").disabled=false;
         render(items,source);
       }
       return;
     }
 
     if(background) return;
+    $("loading").classList.remove("show");$("refresh").disabled=false;
 
-    $("loading").classList.remove("show");
-    $("refresh").disabled=false;
-
-    // Never erase a perfectly good feed just because the next category request failed.
     if(lastGoodItems.length){
-      $("count").textContent=`${requestedCategory} refresh unavailable`;
-      $("emptyText").textContent=`Bright News couldn't refresh ${requestedCategory} right now. Your last successful live stories are still shown below, so the app doesn't go blank. Tap Refresh later to try this category again.`;
+      $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":"safe"} ${requestedCategory==="All"?"stories":requestedCategory+" stories"} found`;
+      $("emptyText").textContent=requestedMode==="uplifting"
+        ? `Bright News didn't find enough genuinely uplifting ${requestedCategory==="All"?"stories":requestedCategory+" stories"} in the current feed. Rather than fill the page with negative news, your last successful Bright News feed stays below.`
+        : `This section couldn't refresh right now. Your last successful live stories remain below.`;
       $("empty").style.display="block";
       render(lastGoodItems,lastGoodSource,true);
-    } else {
-      $("count").textContent="Live feed unavailable";
-      $("emptyText").textContent="Both live news sources are unavailable right now. Bright News will not substitute old sample stories and pretend they're current. Tap Try again in a little while.";
+    }else{
+      $("count").textContent="No safe stories right now";
+      $("emptyText").textContent="Bright News couldn't find current stories that passed this safety level. It will not fill the page with negative headlines just to have more results. Try again later or switch to Gentle.";
       $("empty").style.display="block";
-      $("liveBadge").innerHTML='<span style="width:8px;height:8px;border-radius:50%;background:#d6a03a"></span><span>RETRY LIVE</span>';
     }
   }
 
   function render(items,source,preserveMessage=false){
-    const box=$("stories");
-    box.innerHTML="";
-
-    if(!items.length){
-      $("count").textContent="No safe stories";
-      $("emptyText").textContent="No stories passed the Bright News Shield for this view right now.";
-      $("empty").style.display="block";
-      return;
-    }
-
+    const box=$("stories");box.innerHTML="";
     $("liveBadge").innerHTML='<span class="dot"></span><span>LIVE</span>';
     if(!preserveMessage){
-      $("count").textContent=`${items.length} safe stories · ${source}`;
+      $("count").textContent=`${items.length} ${mode==="uplifting"?"uplifting":"safe"} stories · ${source}`;
       $("empty").style.display="none";
     }
 
     items.forEach((s,i)=>{
-      const article=document.createElement("article");
-      article.className="story";
+      const article=document.createElement("article");article.className="story";
       const open=expanded.has(s.id);
       article.innerHTML=`
         <div class="stripe ${["a","b","c","d"][i%4]}"></div>
@@ -520,35 +515,28 @@
     });
 
     box.querySelectorAll("[data-note]").forEach(b=>b.addEventListener("click",()=>{
-      const id=b.dataset.note;
-      expanded.has(id)?expanded.delete(id):expanded.add(id);
-      render(items,source,preserveMessage);
+      const id=b.dataset.note;expanded.has(id)?expanded.delete(id):expanded.add(id);render(items,source,preserveMessage)
     }));
-
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
-      const id=b.dataset.save;
-      saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved3",JSON.stringify([...saved]));
-      render(items,source,preserveMessage);
+      const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
+      localStorage.setItem("bnSaved4",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> looks for progress, discoveries, kindness, achievements, conservation, culture and other constructive current stories.",
-      gentle:"<strong>🌿 Gentle:</strong> broadens the feed to useful everyday current news while keeping the same headline safety shield.",
-      need:"<strong>📰 Need-to-Know:</strong> focuses on practical science, technology, health, weather, business, education and transportation updates."
+      uplifting:"<strong>☀️ Uplifting:</strong> only shows headlines that signal something genuinely positive or constructive — progress, discoveries, kindness, achievements, celebrations, recovery and community wins.",
+      gentle:"<strong>🌿 Gentle:</strong> allows neutral everyday current news too, while continuing to block crime, tragedy, fear-heavy and strongly negative headlines.",
+      need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
-    $("mood").className=`mood ${mode}`;
-    $("mood").innerHTML=copy[mode];
+    $("mood").className=`mood ${mode}`;$("mood").innerHTML=copy[mode];
   }
 
   function setDate(){
     const d=new Date(),h=d.getHours();
     $("dow").textContent=d.toLocaleDateString(undefined,{weekday:"short"}).toUpperCase();
-    $("day").textContent=d.getDate();
-    $("mon").textContent=d.toLocaleDateString(undefined,{month:"short"}).toUpperCase();
+    $("day").textContent=d.getDate();$("mon").textContent=d.toLocaleDateString(undefined,{month:"short"}).toUpperCase();
     $("greeting").textContent=(h<12?"Good morning":h<17?"Good afternoon":"Good evening")+" 👋";
   }
 
@@ -559,81 +547,45 @@
         const key=`${mode}|${cat}`;
         if(feedCache.has(key)) continue;
         await sleep(2300);
-        try{
-          await load({background:true,requestedCategory:cat,requestedMode:mode,requestedSearch:""});
-        }catch(e){}
+        try{await load({background:true,requestedCategory:cat,requestedMode:mode,requestedSearch:""})}catch(e){}
       }
     })();
   }
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
-    mode=b.dataset.mode;
-    localStorage.setItem("bnMode3",mode);
-    category="All";
-    searchTerm="";
-    $("searchInput").value="";
-    $("feedTitle").textContent="Today's brighter headlines";
+    mode=b.dataset.mode;localStorage.setItem("bnMode4",mode);
+    category="All";searchTerm="";$("searchInput").value="";$("feedTitle").textContent="Today's brighter headlines";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
-
     const key=`${mode}|All`;
     if(feedCache.has(key)){
-      lastGoodItems=feedCache.get(key);
-      lastGoodSource="Google News";
-      render(lastGoodItems,lastGoodSource);
-      startPreload();
-    } else {
-      load().then(startPreload);
-    }
+      lastGoodItems=feedCache.get(key);lastGoodSource="Google News";render(lastGoodItems,lastGoodSource);startPreload();
+    }else load().then(startPreload);
   }));
 
   document.querySelectorAll(".cat").forEach(b=>b.addEventListener("click",()=>{
-    category=b.dataset.cat;
-    searchTerm="";
-    $("searchInput").value="";
+    category=b.dataset.cat;searchTerm="";$("searchInput").value="";
     $("feedTitle").textContent=category==="All"?"Today's brighter headlines":`${category} headlines`;
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x===b));
-
     const key=`${mode}|${category}`;
     if(feedCache.has(key)){
-      const items=feedCache.get(key);
-      lastGoodItems=items;
-      lastGoodSource="Google News";
-      lastGoodKey=key;
-      render(items,lastGoodSource);
-    } else {
-      load();
-    }
+      lastGoodItems=feedCache.get(key);lastGoodSource="Google News";render(lastGoodItems,lastGoodSource);
+    }else load();
   }));
 
   $("searchForm").addEventListener("submit",e=>{
     e.preventDefault();
     searchTerm=$("searchInput").value.replace(/[<>{}\[\]\\]/g," ").replace(/\s+/g," ").trim().slice(0,70);
-    if(!searchTerm){
-      category="All";
-      $("feedTitle").textContent="Today's brighter headlines";
-      document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
-      load();
-      return;
-    }
-    category="All";
-    document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
-    $("feedTitle").textContent=`Search: ${searchTerm}`;
-    load();
+    category="All";document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
+    $("feedTitle").textContent=searchTerm?`Search: ${searchTerm}`:"Today's brighter headlines";load();
   });
 
-  $("refresh").addEventListener("click",()=>{
-    feedCache.delete(currentKey());
-    load();
-  });
+  $("refresh").addEventListener("click",()=>{feedCache.delete(currentKey());load()});
   $("retry").addEventListener("click",load);
 
-  setDate();
-  updateMode();
-  load().then(startPreload);
-
+  setDate();updateMode();load().then(startPreload);
   if("serviceWorker" in navigator){
-    window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
+    window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))
   }
 })();
 </script>
