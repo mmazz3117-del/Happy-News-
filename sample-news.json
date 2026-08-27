@@ -1,0 +1,112 @@
+[
+  {
+    "id": 1,
+    "cat": "Science",
+    "tone": "uplifting",
+    "emoji": "🧬",
+    "tag": "Breakthrough",
+    "headline": "Researchers find a promising new method for repairing damaged nerve tissue",
+    "summary": "Early research suggests a new material may help nerve cells reconnect more effectively after injury. Scientists say more testing is needed, but the results are encouraging.",
+    "source": "Demo Science Desk",
+    "minutes": "3 min read"
+  },
+  {
+    "id": 2,
+    "cat": "Community",
+    "tone": "uplifting",
+    "emoji": "🌻",
+    "tag": "Community Win",
+    "headline": "Neighbors turn an empty city lot into a thriving free community garden",
+    "summary": "Volunteers created raised beds, seating and a produce-sharing table where residents can take fresh vegetables at no cost.",
+    "source": "Demo Community Journal",
+    "minutes": "2 min read"
+  },
+  {
+    "id": 3,
+    "cat": "Animals",
+    "tone": "uplifting",
+    "emoji": "🐢",
+    "tag": "Wildlife",
+    "headline": "Sea turtle nesting numbers continue to rise along protected beaches",
+    "summary": "Conservation teams are reporting encouraging nesting totals after years of habitat protection and volunteer monitoring programs.",
+    "source": "Demo Wildlife Today",
+    "minutes": "4 min read"
+  },
+  {
+    "id": 4,
+    "cat": "Culture",
+    "tone": "uplifting",
+    "emoji": "🎭",
+    "tag": "Good Things",
+    "headline": "Historic neighborhood theater reopens after a community-led restoration",
+    "summary": "The newly restored theater will host movies, live performances, student productions and free community programming.",
+    "source": "Demo Arts & Culture",
+    "minutes": "3 min read"
+  },
+  {
+    "id": 5,
+    "cat": "Environment",
+    "tone": "uplifting",
+    "emoji": "🌳",
+    "tag": "Progress",
+    "headline": "Thousands of new trees are creating cooler walking routes through city neighborhoods",
+    "summary": "The project is focused on streets with limited shade and is already making several busy walking routes noticeably cooler.",
+    "source": "Demo Environment Daily",
+    "minutes": "3 min read"
+  },
+  {
+    "id": 6,
+    "cat": "Science",
+    "tone": "uplifting",
+    "emoji": "🔭",
+    "tag": "Discovery",
+    "headline": "Student astronomy team spots an unusual pattern hidden in years of telescope data",
+    "summary": "The finding could help researchers better understand how a rare class of variable stars changes over time.",
+    "source": "Demo Space & Science",
+    "minutes": "5 min read"
+  },
+  {
+    "id": 7,
+    "cat": "Community",
+    "tone": "gentle",
+    "emoji": "📚",
+    "tag": "Local Life",
+    "headline": "Library expands weekend hours after receiving a new community grant",
+    "summary": "The additional hours will increase access to study spaces, technology assistance and children’s programming.",
+    "source": "Demo Local News",
+    "minutes": "2 min read"
+  },
+  {
+    "id": 8,
+    "cat": "Environment",
+    "tone": "gentle",
+    "emoji": "🚲",
+    "tag": "Around Town",
+    "headline": "New walking and bicycle connection opens between two busy neighborhoods",
+    "summary": "The completed route offers residents another option for commuting, exercise and short local trips.",
+    "source": "Demo Regional News",
+    "minutes": "2 min read"
+  },
+  {
+    "id": 9,
+    "cat": "Community",
+    "tone": "need",
+    "emoji": "🚌",
+    "tag": "Useful Update",
+    "headline": "Weekend transit routes will temporarily change during scheduled road work",
+    "summary": "Several stops will move temporarily while crews complete planned work. Riders can check the alternate route before traveling.",
+    "source": "Demo Daily Update",
+    "minutes": "1 min read"
+  },
+  {
+    "id": 10,
+    "cat": "Science",
+    "tone": "need",
+    "emoji": "🌦️",
+    "tag": "Weather",
+    "headline": "Updated seasonal weather outlook released for the region",
+    "summary": "The latest outlook summarizes expected temperature and rainfall patterns for the coming weeks in practical terms.",
+    "source": "Demo Weather Desk",
+    "minutes": "2 min read"
+  }
+]

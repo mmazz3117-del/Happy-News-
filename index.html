@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ffe3e9">
+  <meta name="description" content="A brighter, gentler way to browse the news.">
+  <title>Bright News</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <style>
+    :root{
+      --ink:#263238;--muted:#6a7479;--line:#e6e2de;--card:#ffffff;--panel:#fffaf5;
+      --pink:#ffe3e9;--yellow:#fff4cc;--blue:#e6f4ff;--green:#eaf8ec;--accent:#7158d9;
+      --shadow:0 12px 30px rgba(42,49,53,.08);
+    }
+    *{box-sizing:border-box}
+    html{background:#fffdf9;color:var(--ink);font-family:Inter,ui-rounded,"SF Pro Rounded","Segoe UI",system-ui,-apple-system,sans-serif}
+    body{margin:0;min-height:100%;background:linear-gradient(#fffdf9,#fffaf4)}
+    button,input{font:inherit}
+    button{cursor:pointer}
+    .app{max-width:980px;margin:0 auto;padding:16px 16px 40px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 2px 14px}
+    .brand{display:flex;align-items:center;gap:10px;font-weight:900;font-size:20px}
+    .brand img{width:42px;height:42px;border-radius:12px}
+    .demo{font-size:12px;color:#735f20;background:#fff1b9;border:1px solid #f1db81;border-radius:999px;padding:6px 9px;font-weight:700}
+    .hero{background:linear-gradient(135deg,var(--yellow),var(--pink) 50%,var(--blue));border:1px solid rgba(70,70,70,.06);border-radius:28px;padding:22px;box-shadow:var(--shadow)}
+    .hero-grid{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start}
+    .eyebrow{font-size:13px;font-weight:800}
+    h1{margin:6px 0 8px;font-size:clamp(28px,5vw,44px);line-height:1.03}
+    .hero p{margin:0;color:#536067;max-width:620px;line-height:1.5}
+    .datebox{background:rgba(255,255,255,.8);border-radius:18px;padding:10px 12px;text-align:center;min-width:72px}
+    .datebox .num{font-size:22px;font-weight:900}
+    .datebox .small{font-size:10px;color:#69757a;font-weight:800;letter-spacing:.08em}
+    .search{display:flex;gap:9px;margin-top:18px}
+    .search input{min-width:0;flex:1;border:1px solid rgba(255,255,255,.95);background:rgba(255,255,255,.9);border-radius:17px;padding:13px 15px;font-size:16px;outline:none}
+    .search input:focus{box-shadow:0 0 0 3px rgba(113,88,217,.22)}
+    .search button,.primary{border:0;background:#243038;color:#fff;border-radius:17px;padding:12px 16px;font-weight:800;min-height:46px}
+    .section{margin-top:20px}
+    .section h2{font-size:19px;margin:0 0 10px}
+    .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+    .mode{border:1px solid var(--line);background:#fff;border-radius:18px;padding:12px 8px;min-height:74px;font-weight:800;color:var(--ink)}
+    .mode .icon{font-size:23px;margin-bottom:4px}
+    .mode.active{border-color:#a996f2;background:#f2efff;box-shadow:0 0 0 2px rgba(113,88,217,.08)}
+    .mood{margin-top:10px;border-radius:18px;padding:14px;line-height:1.45;font-size:14px}
+    .mood.uplifting{background:#fff7d8}.mood.gentle{background:var(--green)}.mood.need{background:#edf3fb}
+    .story-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-top:24px}
+    .story-head .tiny{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+    .story-head h2{font-size:24px;margin:2px 0 0}
+    .count{font-size:13px;color:var(--muted)}
+    .cats{display:flex;gap:8px;overflow-x:auto;padding:12px 1px 4px;scrollbar-width:none}
+    .cats::-webkit-scrollbar{display:none}
+    .cat{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:999px;padding:9px 13px;color:var(--ink)}
+    .cat.active{border-color:#a996f2;background:#f2efff;font-weight:800}
+    .stories{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:12px}
+    .story{background:#fff;border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:0 8px 22px rgba(42,49,53,.05)}
+    .stripe{height:6px}.stripe.a{background:#ffd36e}.stripe.b{background:#91dfaf}.stripe.c{background:#91cafa}
+    .story-inner{padding:16px}
+    .story-top{display:flex;gap:12px}
+    .emoji{width:54px;height:54px;flex:0 0 54px;display:grid;place-items:center;border-radius:17px;background:var(--panel);font-size:29px}
+    .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+    .tag{background:var(--panel);border-radius:999px;padding:5px 8px;font-weight:800;color:var(--ink)}
+    .headline{font-size:17px;line-height:1.28;font-weight:900;margin:8px 0 4px}
+    .source{font-size:11px;color:var(--muted)}
+    .summary{margin-top:13px;background:#fbfaf8;border-radius:16px;padding:13px;font-size:14px;line-height:1.5}
+    .summary strong{display:block;margin-bottom:5px}
+    .demo-note{margin-top:9px;border:1px dashed #d4d0cb;border-radius:12px;padding:9px;font-size:11px;color:var(--muted)}
+    .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+    .actions button{border-radius:14px;padding:10px 12px;min-height:43px;font-size:13px;font-weight:800}
+    .read{border:0;background:#f0edff;color:#34286e}
+    .save{border:1px solid var(--line);background:white;color:var(--ink)}
+    .shield{display:flex;gap:12px;margin-top:22px;background:#fff;border:1px solid var(--line);border-radius:24px;padding:17px;box-shadow:0 8px 20px rgba(42,49,53,.04)}
+    .shield-icon{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;background:#f0edff;border-radius:15px;font-size:22px}
+    .shield h3{margin:0 0 5px}.shield p{margin:0;color:var(--muted);font-size:14px;line-height:1.5}
+    .empty{display:none;border:1px dashed var(--line);border-radius:20px;padding:28px;text-align:center;color:var(--muted);margin-top:12px}
+    .footer{text-align:center;color:var(--muted);font-size:12px;padding:24px 0 6px}
+    @media(max-width:720px){.stories{grid-template-columns:1fr}.app{padding:12px 12px 28px}.hero{padding:18px}.hero-grid{grid-template-columns:1fr auto}.search button{padding-inline:13px}}
+    @media(max-width:430px){.modes{grid-template-columns:1fr 1fr 1fr}.mode{font-size:12px;padding-inline:4px}.datebox{min-width:64px}.hero-grid{gap:10px}.stories{gap:11px}.topbar{align-items:flex-start}.demo{max-width:135px;text-align:center}}
+    @media(prefers-reduced-motion:no-preference){.story,.mode,.cat,.actions button{transition:transform .15s ease,box-shadow .15s ease}.story:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(42,49,53,.08)}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
+      <div class="demo">Prototype · Demo stories</div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-grid">
+        <div>
+          <div class="eyebrow">☀️ Your brighter way to read the news</div>
+          <h1 id="greeting">Good evening 👋</h1>
+          <p>See what happened today — with uplifting, interesting and useful stories first.</p>
+        </div>
+        <div class="datebox" aria-label="Today's date">
+          <div class="small" id="dayName">TODAY</div>
+          <div class="num" id="dayNum">27</div>
+          <div class="small" id="monthName">AUG</div>
+        </div>
+      </div>
+      <form class="search" id="searchForm">
+        <input id="query" type="search" placeholder="Search something interesting…" aria-label="Search Bright News">
+        <button type="submit">Search</button>
+      </form>
+    </section>
+
+    <section class="section">
+      <h2>How do you want the news today?</h2>
+      <div class="modes" role="group" aria-label="News comfort level">
+        <button class="mode active" data-mode="uplifting" aria-pressed="true"><div class="icon">☀️</div>Uplifting</button>
+        <button class="mode" data-mode="gentle" aria-pressed="false"><div class="icon">🌿</div>Gentle</button>
+        <button class="mode" data-mode="need" aria-pressed="false"><div class="icon">📰</div>Need-to-Know</button>
+      </div>
+      <div class="mood uplifting" id="mood"><strong>☀️ Uplifting mode:</strong> discoveries, progress, animals, community, creativity, nature and people doing good things.</div>
+    </section>
+
+    <section>
+      <div class="story-head">
+        <div><div class="tiny">Your Daily Edition</div><h2>Top stories</h2></div>
+        <div class="count" id="count"></div>
+      </div>
+      <div class="cats" id="cats">
+        <button class="cat active" data-cat="All" aria-pressed="true">✨ For You</button>
+        <button class="cat" data-cat="Science" aria-pressed="false">🔬 Science</button>
+        <button class="cat" data-cat="Community" aria-pressed="false">🏘️ Community</button>
+        <button class="cat" data-cat="Animals" aria-pressed="false">🐾 Animals</button>
+        <button class="cat" data-cat="Environment" aria-pressed="false">🌎 Nature</button>
+        <button class="cat" data-cat="Culture" aria-pressed="false">🎨 Culture</button>
+      </div>
+      <div class="stories" id="stories"></div>
+      <div class="empty" id="empty">Nothing matched that search. Try another word or choose For You.</div>
+    </section>
+
+    <section class="shield">
+      <div class="shield-icon">🛡️</div>
+      <div>
+        <h3>Bright News Shield</h3>
+        <p>The live version can screen graphic violence, tragedy, outrage-bait and alarming imagery from the main feed. Important stories can still appear under Need-to-Know in calmer language.</p>
+      </div>
+    </section>
+
+    <div class="footer">Bright News · GitHub-ready PWA prototype</div>
+  </main>
+
+<script>
+(() => {
+  const fallbackStories = [{"id": 1, "cat": "Science", "tone": "uplifting", "emoji": "🧬", "tag": "Breakthrough", "headline": "Researchers find a promising new method for repairing damaged nerve tissue", "summary": "Early research suggests a new material may help nerve cells reconnect more effectively after injury. Scientists say more testing is needed, but the results are encouraging.", "source": "Demo Science Desk", "minutes": "3 min read"}, {"id": 2, "cat": "Community", "tone": "uplifting", "emoji": "🌻", "tag": "Community Win", "headline": "Neighbors turn an empty city lot into a thriving free community garden", "summary": "Volunteers created raised beds, seating and a produce-sharing table where residents can take fresh vegetables at no cost.", "source": "Demo Community Journal", "minutes": "2 min read"}, {"id": 3, "cat": "Animals", "tone": "uplifting", "emoji": "🐢", "tag": "Wildlife", "headline": "Sea turtle nesting numbers continue to rise along protected beaches", "summary": "Conservation teams are reporting encouraging nesting totals after years of habitat protection and volunteer monitoring programs.", "source": "Demo Wildlife Today", "minutes": "4 min read"}, {"id": 4, "cat": "Culture", "tone": "uplifting", "emoji": "🎭", "tag": "Good Things", "headline": "Historic neighborhood theater reopens after a community-led restoration", "summary": "The newly restored theater will host movies, live performances, student productions and free community programming.", "source": "Demo Arts & Culture", "minutes": "3 min read"}, {"id": 5, "cat": "Environment", "tone": "uplifting", "emoji": "🌳", "tag": "Progress", "headline": "Thousands of new trees are creating cooler walking routes through city neighborhoods", "summary": "The project is focused on streets with limited shade and is already making several busy walking routes noticeably cooler.", "source": "Demo Environment Daily", "minutes": "3 min read"}, {"id": 6, "cat": "Science", "tone": "uplifting", "emoji": "🔭", "tag": "Discovery", "headline": "Student astronomy team spots an unusual pattern hidden in years of telescope data", "summary": "The finding could help researchers better understand how a rare class of variable stars changes over time.", "source": "Demo Space & Science", "minutes": "5 min read"}, {"id": 7, "cat": "Community", "tone": "gentle", "emoji": "📚", "tag": "Local Life", "headline": "Library expands weekend hours after receiving a new community grant", "summary": "The additional hours will increase access to study spaces, technology assistance and children’s programming.", "source": "Demo Local News", "minutes": "2 min read"}, {"id": 8, "cat": "Environment", "tone": "gentle", "emoji": "🚲", "tag": "Around Town", "headline": "New walking and bicycle connection opens between two busy neighborhoods", "summary": "The completed route offers residents another option for commuting, exercise and short local trips.", "source": "Demo Regional News", "minutes": "2 min read"}, {"id": 9, "cat": "Community", "tone": "need", "emoji": "🚌", "tag": "Useful Update", "headline": "Weekend transit routes will temporarily change during scheduled road work", "summary": "Several stops will move temporarily while crews complete planned work. Riders can check the alternate route before traveling.", "source": "Demo Daily Update", "minutes": "1 min read"}, {"id": 10, "cat": "Science", "tone": "need", "emoji": "🌦️", "tag": "Weather", "headline": "Updated seasonal weather outlook released for the region", "summary": "The latest outlook summarizes expected temperature and rainfall patterns for the coming weeks in practical terms.", "source": "Demo Weather Desk", "minutes": "2 min read"}];
+  let stories = fallbackStories;
+  let mode = localStorage.getItem("brightNewsMode") || "uplifting";
+  let cat = "All";
+  let query = "";
+  const expanded = new Set();
+  const saved = new Set(JSON.parse(localStorage.getItem("brightNewsSaved") || "[]"));
+
+  const storyBox = document.getElementById("stories");
+  const empty = document.getElementById("empty");
+  const count = document.getElementById("count");
+  const mood = document.getElementById("mood");
+
+  const moodCopy = {
+    uplifting: "<strong>☀️ Uplifting mode:</strong> discoveries, progress, animals, community, creativity, nature and people doing good things.",
+    gentle: "<strong>🌿 Gentle mode:</strong> uplifting stories plus useful everyday news, local updates, education, business and interesting current events.",
+    need: "<strong>📰 Need-to-Know mode:</strong> practical important updates too, still without sensational wording or unnecessary disturbing imagery."
+  };
+
+  function setDate() {
+    const d = new Date();
+    document.getElementById("dayName").textContent = d.toLocaleDateString(undefined,{weekday:"short"}).toUpperCase();
+    document.getElementById("dayNum").textContent = d.getDate();
+    document.getElementById("monthName").textContent = d.toLocaleDateString(undefined,{month:"short"}).toUpperCase();
+    const h = d.getHours();
+    document.getElementById("greeting").textContent = (h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening") + " 👋";
+  }
+
+  function toneAllowed(s) {
+    if (mode === "uplifting") return s.tone === "uplifting";
+    if (mode === "gentle") return s.tone === "uplifting" || s.tone === "gentle";
+    return true;
+  }
+
+  function escapeHTML(text) {
+    return String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  }
+
+  function render() {
+    const term = query.trim().toLowerCase();
+    const filtered = stories.filter(s => toneAllowed(s) && (cat === "All" || s.cat === cat) &&
+      (!term || `${s.headline} ${s.summary} ${s.cat} ${s.tag}`.toLowerCase().includes(term)));
+
+    count.textContent = `${filtered.length} ${filtered.length === 1 ? "story" : "stories"}`;
+    storyBox.innerHTML = "";
+    empty.style.display = filtered.length ? "none" : "block";
+
+    filtered.forEach((s, i) => {
+      const article = document.createElement("article");
+      article.className = "story";
+      article.innerHTML = `
+        <div class="stripe ${["a","b","c"][i%3]}"></div>
+        <div class="story-inner">
+          <div class="story-top">
+            <div class="emoji">${escapeHTML(s.emoji)}</div>
+            <div>
+              <div class="meta"><span class="tag">${escapeHTML(s.tag)}</span><span>${escapeHTML(s.minutes)}</span></div>
+              <div class="headline">${escapeHTML(s.headline)}</div>
+              <div class="source">${escapeHTML(s.source)}</div>
+            </div>
+          </div>
+          ${expanded.has(s.id) ? `
+            <div class="summary">
+              <strong>Quick summary</strong>
+              ${escapeHTML(s.summary)}
+              <div class="demo-note">🔗 These are demo stories. In the live-news version, <strong>Read full story</strong> will open the original publisher article.</div>
+            </div>` : ""}
+          <div class="actions">
+            <button class="read" data-action="read" data-id="${s.id}">${expanded.has(s.id) ? "Close story" : "Read story"}</button>
+            <button class="save" data-action="save" data-id="${s.id}">${saved.has(s.id) ? "♥ Saved" : "♡ Save"}</button>
+          </div>
+        </div>`;
+      storyBox.appendChild(article);
+    });
+
+    storyBox.querySelectorAll("[data-action]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = Number(btn.dataset.id);
+        if (btn.dataset.action === "read") {
+          expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+        } else {
+          saved.has(id) ? saved.delete(id) : saved.add(id);
+          localStorage.setItem("brightNewsSaved", JSON.stringify([...saved]));
+        }
+        render();
+      });
+    });
+  }
+
+  function updateModeUI() {
+    document.querySelectorAll(".mode").forEach(btn => {
+      const active = btn.dataset.mode === mode;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", active);
+    });
+    mood.className = `mood ${mode}`;
+    mood.innerHTML = moodCopy[mode];
+  }
+
+  document.querySelectorAll(".mode").forEach(btn => btn.addEventListener("click", () => {
+    mode = btn.dataset.mode;
+    localStorage.setItem("brightNewsMode", mode);
+    updateModeUI();
+    render();
+  }));
+
+  document.querySelectorAll(".cat").forEach(btn => btn.addEventListener("click", () => {
+    cat = btn.dataset.cat;
+    document.querySelectorAll(".cat").forEach(b => {
+      const active = b === btn;
+      b.classList.toggle("active", active);
+      b.setAttribute("aria-pressed", active);
+    });
+    render();
+  }));
+
+  document.getElementById("searchForm").addEventListener("submit", e => {
+    e.preventDefault();
+    query = document.getElementById("query").value;
+    render();
+  });
+
+  document.getElementById("query").addEventListener("input", e => {
+    if (!e.target.value) { query = ""; render(); }
+  });
+
+  setDate();
+  updateModeUI();
+  render();
+
+  fetch("sample-news.json", {cache:"no-store"})
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(data => { if (Array.isArray(data)) { stories = data; render(); } })
+    .catch(() => {});
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
