@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v7</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v8</div>
     </div>
   </header>
 
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Search follows your selected comfort level. Uplifting searches the topic broadly, blocks negative/distressing headlines and ranks the more constructive results first. Gentle allows positive and neutral developments. Need-to-Know is intentionally broader. Failed searches no longer show unrelated old stories. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Search now works by exclusion first: Uplifting searches broadly, removes negative/distressing coverage, then ranks constructive and useful stories higher. It does not require “positive” keywords. Gentle keeps positive and neutral coverage. Need-to-Know is intentionally broader. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v7</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v8</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode4") || "uplifting";
+  let mode = localStorage.getItem("bnMode8") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,7 +176,7 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved4") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved8") || "[]"));
   const expanded = new Set();
 
   // Always blocked from the visible Bright News feed.
@@ -212,7 +212,15 @@
     "democrat","democrats","republican","republicans","governor race","political","politics"
   ];
 
-  // Uplifting stories must contain at least one constructive cue.
+  // Fear-heavy framing is blocked from Gentle as well as Uplifting.
+  const gentleFearBlock = [
+    "turbulent","critical","limited window","narrowing","warn ","warns","warning","warnings",
+    "attack","attacks","cyber attack","cyber attacks","defend against","danger","dangerous",
+    "risk","risks","risky","threat","threats","alarming","alarm","panic","amid fears",
+    "amid concerns","backlash","outrage","crisis","scandal","fraud","theft","lawsuit"
+  ];
+
+  // Positive terms are used for RANKING only — never as a requirement to pass Uplifting.
   const positiveSignals = [
     "breakthrough","discovery","discovers","discovered","innovation","innovative","achievement","achieves",
     "award","awarded","wins","winner","victory","record","milestone","success","successful","progress",
@@ -290,23 +298,22 @@
     return list.some(word => t.includes(word));
   }
 
-  function passesBrightShield(title, requestedMode){
-    if (hasAny(title, hardBlock)) return false;
+  function passesBrightShield(title, requestedMode, snippet=""){
+    const combined = `${title || ""} ${snippet || ""}`;
+
+    // Graphic/distressing material is blocked from every Bright News view.
+    if (hasAny(combined, hardBlock)) return false;
 
     if (requestedMode === "uplifting") {
-      if (hasAny(title, negativeFrame)) return false;
+      // Uplifting is primarily an EXCLUSION filter: remove negative/fear-heavy framing,
+      // then rank what remains by constructive value.
+      if (hasAny(combined, negativeFrame)) return false;
       if (hasAny(title, upliftingPoliticsBlock)) return false;
-      // Safe results can pass even without an exact positivity keyword.
-      // Positive/constructive headlines are ranked higher later.
     }
 
     if (requestedMode === "gentle") {
-      // Gentle can include neutral everyday news, but not strongly negative framing.
-      const extraGentleBlocks = [
-        "crisis","layoff","layoffs","bankruptcy","scandal","outrage","backlash",
-        "damaging","fraud","theft","lawsuit","price hike","high price"
-      ];
-      if (hasAny(title, extraGentleBlocks)) return false;
+      // Gentle allows neutral everyday news, but not fear-heavy or strongly negative framing.
+      if (hasAny(combined, gentleFearBlock)) return false;
     }
 
     return true;
@@ -316,6 +323,12 @@
     const el = document.createElement("textarea");
     el.innerHTML = String(value ?? "");
     return el.value;
+  }
+
+  function stripHTML(value){
+    const el = document.createElement("div");
+    el.innerHTML = String(value ?? "");
+    return (el.textContent || el.innerText || "").replace(/\s+/g," ").trim();
   }
 
   function escapeHTML(s){
@@ -387,53 +400,67 @@
     if(pending.has(key)) return pending.get(key);
 
     const promise=(async()=>{
-      const windows = requestedSearch
-        ? (requestedMode==="uplifting" ? [7,14] : requestedMode==="gentle" ? [5,10] : [3,7])
-        : [null];
+      let queryPlans=[];
 
-      let best = [];
+      if(requestedSearch){
+        const term=String(requestedSearch).replace(/[()"]/g," ").replace(/\s+/g," ").trim();
+        const days=requestedMode==="uplifting"?14:requestedMode==="gentle"?10:7;
 
-      for(const days of windows){
-        const q=requestedSearch
-          ? buildSearchQuery(requestedSearch, requestedMode, days)
-          : (queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
+        // Pass 1 is the user's topic alone. No positive-keyword requirement.
+        queryPlans.push(`(${term}) when:${days}d`);
 
-        const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}`;
+        // If the broad search is dominated by negative coverage, these are CONTEXT expansions,
+        // not positivity filters. They discover science, education, health, community, creativity,
+        // accessibility, environment and practical-use coverage about the same topic.
+        if(requestedMode!=="need"){
+          queryPlans.push(`(${term}) (research OR science OR health OR education OR accessibility OR community OR environment OR creativity OR productivity) when:${days}d`);
+          queryPlans.push(`(${term}) (researchers OR students OR medicine OR conservation OR "small business" OR tools OR technology OR arts) when:${days}d`);
+        }
+      }else{
+        queryPlans.push(queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
+      }
 
+      let merged=[];
+      const seenLinks=new Set();
+
+      for(const q of queryPlans){
+        const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}&count=50`;
         let data;
         try{
           data=await spacedFetch(endpoint);
         }catch(e){
-          await sleep(2200);
-          data=await spacedFetch(endpoint);
+          await sleep(1800);
+          try{ data=await spacedFetch(endpoint); }catch(e2){ continue; }
         }
 
         if(!data || data.status!=="ok" || !Array.isArray(data.items)) continue;
 
-        const items=data.items.map((item,i)=>{
+        data.items.forEach((item,i)=>{
           const sp=splitPublisher(item.title);
-          return {
-            id:item.guid||item.link||`${key}-${days||"feed"}-${i}`,
+          const link=item.link;
+          if(!link || seenLinks.has(link)) return;
+          seenLinks.add(link);
+          merged.push({
+            id:item.guid||link||`${key}-${i}`,
             title:sp.headline,
             publisher:sp.publisher,
-            url:item.link,
+            url:link,
             date:item.pubDate,
+            snippet:stripHTML(item.description||item.content||""),
             emoji:emojis[requestedCategory]||"✨",
             tag:requestedCategory==="All"
               ? (requestedMode==="uplifting"?"Bright Pick":requestedMode==="gentle"?"Gentle News":"Need-to-Know")
               : requestedCategory
-          };
+          });
         });
 
-        const safe=dedupeAndFilter(items,requestedMode);
-        if(safe.length){
-          best=safe;
-          if(safe.length>=4 || !requestedSearch) break;
-        }
+        const safeSoFar=dedupeAndFilter(merged,requestedMode);
+        if(!requestedSearch || safeSoFar.length>=8) break;
       }
 
-      if(best.length) feedCache.set(key,best);
-      return best;
+      const safe=dedupeAndFilter(merged,requestedMode);
+      if(safe.length) feedCache.set(key,safe);
+      return safe;
     })();
 
     pending.set(key,promise);
@@ -448,7 +475,7 @@
     let keywords=q.replace(/when:\d+d/g,"").replace(/[()"]/g," ").replace(/\s+/g," ").trim();
     if(keywords.length>180) keywords=keywords.slice(0,180);
 
-    const tone=requestedMode==="uplifting"?" tone>3":requestedMode==="gentle"?" tone>0":" toneabs<5";
+    const tone=requestedMode==="uplifting"?" tone>-1":requestedMode==="gentle"?" tone>-3":" toneabs<8";
     const params=new URLSearchParams({
       query:`${keywords}${tone} sourcelang:english`,mode:"artlist",format:"json",
       maxrecords:"30",timespan:"3d",sort:"datedesc"
@@ -463,27 +490,36 @@
       const arr=Array.isArray(data.articles)?data.articles:[];
       return dedupeAndFilter(arr.map((a,i)=>({
         id:a.url||`${requestedCategory}-${i}`,title:decodeEntities(a.title),publisher:a.domain||"Publisher",
-        url:a.url,date:a.seendate,emoji:emojis[requestedCategory]||"✨",
+        url:a.url,date:a.seendate,snippet:"",emoji:emojis[requestedCategory]||"✨",
         tag:requestedCategory==="All"?"Backup Feed":requestedCategory
       })),requestedMode);
     } finally{clearTimeout(timer)}
   }
 
-  function positivityScore(title){
-    const t = normalized(title);
+  function constructiveScore(item){
+    const title = normalized(item.title || "");
+    const context = normalized(`${item.title || ""} ${item.snippet || ""}`);
     let score = 0;
 
+    // Constructive words boost ranking, but are NOT required for inclusion.
     positiveSignals.forEach(word => {
-      if (t.includes(word)) score += 3;
+      if (title.includes(word)) score += 3;
+      else if (context.includes(word)) score += 1;
     });
 
-    const bonus = [
-      "new ","opens","opening","reopens","launches","welcomes","celebrates","celebration",
-      "adoption","adopted","rescued","returns","record","award","grant","free ","festival",
-      "partnership","students","volunteers","restored","recovery","improves","expands","success"
+    const constructiveContexts = [
+      "research","researchers","study","scientists","science","medicine","health","education",
+      "students","teachers","accessibility","accessible","community","nonprofit","conservation",
+      "wildlife","environment","arts","culture","museum","library","small business","productivity",
+      "creative","creativity","tool","tools","feature","program","partnership","collaboration"
     ];
-    bonus.forEach(word => {
-      if (t.includes(word)) score += 1;
+    constructiveContexts.forEach(word => {
+      if (context.includes(word)) score += 0.5;
+    });
+
+    // Mildly negative words lower ranking even when they are not strict blockers in the selected mode.
+    negativeFrame.forEach(word => {
+      if (context.includes(word)) score -= 2;
     });
 
     return score;
@@ -493,7 +529,7 @@
     const seen=new Set();
 
     const safe = items
-      .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode))
+      .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode,x.snippet||""))
       .filter(x=>{
         const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
         if(!k||seen.has(k)) return false;
@@ -501,11 +537,13 @@
         return true;
       });
 
+    // Uplifting does not demand a positive keyword. It removes negative material first,
+    // then ranks constructive/hopeful/interesting stories above neutral ones.
     if(requestedMode==="uplifting"){
-      safe.sort((a,b)=>positivityScore(b.title)-positivityScore(a.title));
+      safe.sort((a,b)=>constructiveScore(b)-constructiveScore(a));
     }
 
-    return safe.slice(0,20);
+    return safe.slice(0,24);
   }
 
   async function load(options={}){
@@ -554,7 +592,7 @@
       $("stories").innerHTML="";
       $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":requestedMode==="gentle"?"gentle":"safe"} search results`;
       $("emptyText").textContent=requestedMode==="uplifting"
-        ? `No uplifting stories about “${requestedSearch}” passed the Bright News Shield right now. I searched a wider 14-day window too. Try again later, or switch to Gentle for positive and neutral results.`
+        ? `No safe uplifting stories about “${requestedSearch}” were returned from the live sources on this try. Bright News searched the topic broadly and also checked constructive subject areas before giving up. Try Refresh in a moment or switch to Gentle.`
         : requestedMode==="gentle"
           ? `No gentle stories about “${requestedSearch}” passed the filter right now. Try again later or use Need-to-Know for a broader search.`
           : `No current stories about “${requestedSearch}” were available from the live feed right now.`;
@@ -613,15 +651,15 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved4",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved8",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> searches the topic you choose broadly, blocks negative/distressing headlines, then ranks the more positive and constructive stories first.",
-      gentle:"<strong>🌿 Gentle:</strong> searches the same topic more broadly for positive and neutral developments, while still blocking crime, tragedy and fear-heavy headlines.",
+      uplifting:"<strong>☀️ Uplifting:</strong> searches broadly, filters OUT negative/distressing coverage, then ranks constructive and interesting stories first. A headline does not need a special ‘positive’ word to appear.",
+      gentle:"<strong>🌿 Gentle:</strong> keeps positive and neutral coverage, while filtering out graphic, crime-heavy and fear-heavy stories.",
       need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
     $("mood").className=`mood ${mode}`;$("mood").innerHTML=copy[mode];
@@ -648,7 +686,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode4",mode);
+    localStorage.setItem("bnMode8",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
