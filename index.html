@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v15</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v16</div>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
       <button class="cat" data-cat="Sports">🏆 Sports</button>
     </div>
 
-    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v15 context-aware/category-relevance filters. Quick preview now tries to resolve the publisher link and pull a real excerpt before falling back to RSS text. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
+    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v16 context-aware/category-relevance filters. Quick preview now tries to resolve the publisher link and pull a real excerpt before falling back to RSS text. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
 
     <div class="loading show" id="loading"><div class="spinner"></div><div id="loadingText">Finding today's brighter stories…</div></div>
     <div class="stories" id="stories"></div>
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News v15 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
+      <p>Bright News v16 uses context-aware filtering. War, politics, crime, discrimination and controversy are hard-excluded by topic. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v15</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v16</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode15") || "uplifting";
+  let mode = localStorage.getItem("bnMode16") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,7 +176,7 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved15") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved16") || "[]"));
   const expanded = new Set();
   const previewCache = new Map();
   const previewLoading = new Set();
@@ -186,6 +186,8 @@
   //   1) war / armed conflict
   //   2) politics / elections / government fights
   //   3) crime / violent crime
+  //   4) discrimination / racism / bias disputes
+  //   5) controversy / backlash / outrage-driven disputes
   //
   // Other words such as death, crisis, warning, risk, disaster, etc. are NOT
   // automatic blockers. Their meaning is evaluated through context/tone below.
@@ -210,6 +212,25 @@
     "crime","criminal","kidnap","kidnapped","rape","sexual assault","assaulted",
     "weapon","weapons"," gun ","guns","manhunt","amber alert","police search"
   ];
+
+  // User-requested exclusions: stories centered on discrimination or controversy
+  // should not appear in Bright News' gentler feeds.
+  const discriminationTerms = [
+    "discrimination","discriminatory","discriminates","racial discrimination",
+    "racial bias","racism","racist","racial injustice","racial inequity",
+    "racial inequality","sex discrimination","gender discrimination",
+    "age discrimination","religious discrimination","workplace discrimination",
+    "civil rights complaint","civil rights investigation","bias complaint",
+    "hate speech","hate crime"
+  ];
+
+  const controversyTerms = [
+    "controversy","controversial","backlash","outrage over","sparks outrage",
+    "draws criticism","faces criticism","under fire for","firestorm","public feud",
+    "feud over","heated dispute","heated debate","culture war","culture wars",
+    "boycott calls","calls for boycott","angry reaction","uproar"
+  ];
+
 
   // Common phrases where a blocked-looking word is clearly being used in another context.
   const contextExceptions = [
@@ -393,17 +414,21 @@
       if(containsTerm(cleaned, warTerms)) return "war";
       if(containsTerm(cleaned, politicsTerms)) return "politics";
       if(containsTerm(cleaned, crimeTerms)) return "crime";
+      if(containsTerm(cleaned, discriminationTerms)) return "discrimination";
+      if(containsTerm(cleaned, controversyTerms)) return "controversy";
       return "";
     }
 
     if(containsTerm(combined, warTerms)) return "war";
     if(containsTerm(combined, politicsTerms)) return "politics";
     if(containsTerm(combined, crimeTerms)) return "crime";
+    if(containsTerm(combined, discriminationTerms)) return "discrimination";
+    if(containsTerm(combined, controversyTerms)) return "controversy";
     return "";
   }
 
   function passesBrightShield(title, requestedMode, snippet=""){
-    // v11: keyword blocking is intentionally limited to war, politics and crime.
+    // v16: keyword blocking is intentionally limited to war, politics, crime, discrimination and controversy.
     return !blockedTopic(title, snippet);
   }
 
@@ -1048,15 +1073,15 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved15",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved16",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> blocks war, politics and crime, then judges everything else by context and tone. Categories can be more sensitive where needed — Animals now filters sad outcomes more strictly without turning those words into global bans.",
-      gentle:"<strong>🌿 Gentle:</strong> also blocks war, politics and crime, but otherwise allows positive and neutral stories and only removes very strongly negative coverage.",
+      uplifting:"<strong>☀️ Uplifting:</strong> blocks war, politics, crime, discrimination and controversy, then judges everything else by context and tone. Categories can be more sensitive where needed — Animals now filters sad outcomes more strictly without turning those words into global bans.",
+      gentle:"<strong>🌿 Gentle:</strong> also blocks war, politics, crime, discrimination and controversy, but otherwise allows positive and neutral stories and only removes very strongly negative coverage.",
       need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
     $("mood").className=`mood ${mode}`;$("mood").innerHTML=copy[mode];
@@ -1099,7 +1124,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode15",mode);
+    localStorage.setItem("bnMode16",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
