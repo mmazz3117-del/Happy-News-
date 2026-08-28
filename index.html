@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v10</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v11</div>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
       <button class="cat" data-cat="Sports">🏆 Sports</button>
     </div>
 
-    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, caches successful sections, and uses another live index as a backup. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
+    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v11 context-aware filter before displaying stories. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
 
     <div class="loading show" id="loading"><div class="spinner"></div><div id="loadingText">Finding today's brighter stories…</div></div>
     <div class="stories" id="stories"></div>
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News v10 works by exclusion first: Uplifting searches broadly, removes negative/distressing coverage, then ranks constructive and useful stories higher. It does not require “positive” keywords. Gentle keeps positive and neutral coverage. Need-to-Know is intentionally broader. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Bright News v11 uses context-aware filtering. Only war, politics and crime are hard-excluded by topic keywords. Other potentially negative words are evaluated in context, so “deaths decline” is treated differently from “beloved actor dies.” Uplifting ranks constructive stories first; Gentle allows a broader neutral-positive mix. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v10</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v11</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode10") || "uplifting";
+  let mode = localStorage.getItem("bnMode11") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,48 +176,76 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved10") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved11") || "[]"));
   const expanded = new Set();
 
-  // Always blocked from the visible Bright News feed.
-  const hardBlock = [
-    "killed","killing","kills","dead","death","deaths","died","murder","murdered","shooting","shooter",
-    "gunman","gunfire","stabbing","stabbed","bomb","bombing","missile","war ","warfare","troops",
-    "hostage","kidnap","rape","sexual assault","abuse","fatal","crash","collision","injured","injuries",
-    "wildfire","earthquake","tornado","hurricane","flooding","disaster","tragedy","funeral","outbreak",
-    "suicide","terror","terrorist","execution","riot","riots","massacre","assaulted","explosion","airstrike",
-    "lockdown","weapon","weapons"," gun ","guns","arrested","arrest ","arrests","disturbance","crime",
-    "criminal","police search","suspect","suspects","charged with","charges filed","jail","prison",
-    "threat","threats","threatened","evacuated","evacuation","missing person","amber alert","manhunt"
+  // v11 HARD EXCLUSIONS:
+  // Only these topic families are removed by keywords/patterns:
+  //   1) war / armed conflict
+  //   2) politics / elections / government fights
+  //   3) crime / violent crime
+  //
+  // Other words such as death, crisis, warning, risk, disaster, etc. are NOT
+  // automatic blockers. Their meaning is evaluated through context/tone below.
+
+  const warTerms = [
+    "war","wars","warfare","invasion","invades","invaded","airstrike","airstrikes",
+    "missile","missiles","troops","battlefield","combat","ceasefire","hostage","hostages",
+    "armed conflict","military offensive","military strike","shelling","artillery"
   ];
 
-  // Not necessarily traumatic, but these are not appropriate for Uplifting.
-  const negativeFrame = [
-    "problem","problems","crisis","shortage","shortages","cuts","cutting","layoff","layoffs","laid off",
-    "closes","closing","closure","shuts down","bankruptcy","bankrupt","lawsuit","sues ","suing","scandal",
-    "controversy","controversial","warning","warns","concern","concerns","fear","fears","angry","anger",
-    "outrage","slams","lashes out","backlash","struggle","struggles","struggling","fails","failed","failure",
-    "decline","declines","drops","drop in","falls","falling","high price","higher prices","price hike",
-    "costs rise","rising costs","expensive","gut it","guts it","axed","scrapped","canceled","cancelled",
-    "loss","loses","lost ","defeat","defeated","damaging","damage","damaged","fraud","stolen","theft",
-    "turbulent","critical","limited window","narrowing","warn ","warns","warning","warnings","attack","attacks",
-    "cyber attack","cyber attacks","defend against","defense push","defence push","danger","dangerous","risk",
-    "risks","risky","threat","threats","uncertain","uncertainty","alarming","alarm","panic","worried","worry",
-    "tough questions","secret talks","controversy","debate erupts","amid concerns","amid fears"
+  const politicsTerms = [
+    "trump","biden","harris","election","elections","campaign","campaigns","white house",
+    "congress","congressional","senate","senator","senators","democrat","democrats",
+    "republican","republicans","parliament","parliamentary","prime minister","lawmakers",
+    "ballot","polling","political","politics","governor race","presidential race"
   ];
 
-  // Political/current-affairs framing is intentionally kept out of Uplifting.
-  const upliftingPoliticsBlock = [
-    "trump","biden","harris","election","campaign","white house","congress","senate","senator",
-    "democrat","democrats","republican","republicans","governor race","political","politics"
+  const crimeTerms = [
+    "murder","murdered","homicide","shooting","shooter","gunman","gunfire","stabbing",
+    "stabbed","robbery","robbed","burglary","theft","stolen","arrested","arrest ",
+    "arrests","suspect","suspects","charged with","indicted","indictment","jail","prison",
+    "crime","criminal","kidnap","kidnapped","rape","sexual assault","assaulted",
+    "weapon","weapons"," gun ","guns","manhunt","amber alert","police search"
   ];
 
-  // Fear-heavy framing is blocked from Gentle as well as Uplifting.
-  const gentleFearBlock = [
-    "turbulent","critical","limited window","narrowing","warn ","warns","warning","warnings",
-    "attack","attacks","cyber attack","cyber attacks","defend against","danger","dangerous",
-    "risk","risks","risky","threat","threats","alarming","alarm","panic","amid fears",
-    "amid concerns","backlash","outrage","crisis","scandal","fraud","theft","lawsuit"
+  // Common phrases where a blocked-looking word is clearly being used in another context.
+  const contextExceptions = [
+    "shooting star","shooting stars","photo shooting","film shooting",
+    "war on cancer","war against cancer","war on disease","war against disease"
+  ];
+
+  // Strongly negative PHRASES affect tone, but are not hard keyword exclusions.
+  // Using phrases instead of isolated words reduces false positives.
+  const strongNegativePhrases = [
+    "making everything worse","more bad news","bad news for","doomsday","system unravels",
+    "crisis worsens","crisis deepens","fears grow","concerns mount","faces backlash",
+    "under fire for","disaster unfolds","tragedy strikes","dies at","has died","dead at",
+    "warning signs","grim outlook","bleak outlook","devastating loss","catastrophic",
+    "shuts down permanently","files for bankruptcy","mass layoffs","layoffs announced"
+  ];
+
+  const mildNegativePhrases = [
+    "warning","warns that","concerns about","risk of","risks of","uncertainty","struggles with",
+    "faces challenges","high price","rising costs","shortage","decline in","falls sharply",
+    "controversy over","criticism of","problem with","problems with"
+  ];
+
+  const strongPositivePhrases = [
+    "good news","breakthrough","major breakthrough","promising results","encouraging results",
+    "positive results","record low","record high","sets record","wins award","award-winning",
+    "successful","success","improves","improved","improvement","expands access","new treatment",
+    "new discovery","discovery","recovery","rescued","reopens","restored","celebrates",
+    "community partnership","new program","new grant","receives grant","scholarship",
+    "declines sharply","drops sharply","falls to record low","survival improves"
+  ];
+
+  // Context-sensitive "negative-looking" phrases that can actually be good news.
+  const positiveResolutionPhrases = [
+    "deaths fall","deaths decline","death rate falls","death rate declines","mortality falls",
+    "mortality declines","cases fall","cases decline","crime falls","crime declines",
+    "risk falls","risk declines","costs fall","costs decline","shortage eases","crisis averted",
+    "warning lifted","lockdown lifted","restrictions lifted","threat reduced","threat eliminated"
   ];
 
   // Positive terms are used for RANKING only — never as a requirement to pass Uplifting.
@@ -297,25 +325,47 @@
     return list.some(word => t.includes(word));
   }
 
-  function passesBrightShield(title, requestedMode, snippet=""){
+  function containsTerm(text, terms){
+    const t = normalized(text);
+    return terms.some(term => {
+      const needle = normalized(term).trim();
+      return t.includes(` ${needle} `) || t.includes(needle);
+    });
+  }
+
+  function hasContextException(text){
+    const t = normalized(text);
+    return contextExceptions.some(phrase => t.includes(phrase));
+  }
+
+  function blockedTopic(title, snippet=""){
     const combined = `${title || ""} ${snippet || ""}`;
-
-    // Graphic/distressing material is blocked from every Bright News view.
-    if (hasAny(combined, hardBlock)) return false;
-
-    if (requestedMode === "uplifting") {
-      // Uplifting is primarily an EXCLUSION filter: remove negative/fear-heavy framing,
-      // then rank what remains by constructive value.
-      if (hasAny(combined, negativeFrame)) return false;
-      if (hasAny(title, upliftingPoliticsBlock)) return false;
+    if(hasContextException(combined)) {
+      // Exceptions only suppress a false-positive term; other blocked topic terms can still match.
+      const cleaned = normalized(combined)
+        .replace("shooting star","")
+        .replace("shooting stars","")
+        .replace("photo shooting","")
+        .replace("film shooting","")
+        .replace("war on cancer","")
+        .replace("war against cancer","")
+        .replace("war on disease","")
+        .replace("war against disease","");
+      if(containsTerm(cleaned, warTerms)) return "war";
+      if(containsTerm(cleaned, politicsTerms)) return "politics";
+      if(containsTerm(cleaned, crimeTerms)) return "crime";
+      return "";
     }
 
-    if (requestedMode === "gentle") {
-      // Gentle allows neutral everyday news, but not fear-heavy or strongly negative framing.
-      if (hasAny(combined, gentleFearBlock)) return false;
-    }
+    if(containsTerm(combined, warTerms)) return "war";
+    if(containsTerm(combined, politicsTerms)) return "politics";
+    if(containsTerm(combined, crimeTerms)) return "crime";
+    return "";
+  }
 
-    return true;
+  function passesBrightShield(title, requestedMode, snippet=""){
+    // v11: keyword blocking is intentionally limited to war, politics and crime.
+    return !blockedTopic(title, snippet);
   }
 
   function decodeEntities(value){
@@ -510,39 +560,52 @@
     } finally{clearTimeout(timer)}
   }
 
-  function constructiveScore(item){
+  function phraseHits(context, phrases, points){
+    let score = 0;
+    phrases.forEach(phrase => {
+      if(context.includes(phrase)) score += points;
+    });
+    return score;
+  }
+
+  function toneScore(item){
     const title = normalized(item.title || "");
     const context = normalized(`${item.title || ""} ${item.snippet || ""}`);
     let score = 0;
 
-    // Constructive words boost ranking, but are NOT required for inclusion.
+    // Resolution phrases override the misleading negative-looking word inside them.
+    score += phraseHits(context, positiveResolutionPhrases, 5);
+    score += phraseHits(context, strongPositivePhrases, 3);
+    score += phraseHits(context, strongNegativePhrases, -5);
+    score += phraseHits(context, mildNegativePhrases, -1);
+
+    // Existing positive vocabulary is RANKING help only — never a pass/fail keyword list.
     positiveSignals.forEach(word => {
-      if (title.includes(word)) score += 3;
-      else if (context.includes(word)) score += 1;
+      if(title.includes(word)) score += 1.5;
+      else if(context.includes(word)) score += 0.5;
     });
 
     const constructiveContexts = [
       "research","researchers","study","scientists","science","medicine","health","education",
-      "students","teachers","accessibility","accessible","community","nonprofit","conservation",
-      "wildlife","environment","arts","culture","museum","library","small business","productivity",
-      "creative","creativity","tool","tools","feature","program","partnership","collaboration"
+      "students","teachers","accessibility","community","nonprofit","conservation","wildlife",
+      "environment","arts","culture","museum","library","small business","productivity",
+      "creative","technology","innovation","program","partnership","collaboration"
     ];
     constructiveContexts.forEach(word => {
-      if (context.includes(word)) score += 0.5;
-    });
-
-    // Mildly negative words lower ranking even when they are not strict blockers in the selected mode.
-    negativeFrame.forEach(word => {
-      if (context.includes(word)) score -= 2;
+      if(context.includes(word)) score += 0.25;
     });
 
     return score;
   }
 
+  function constructiveScore(item){
+    return toneScore(item);
+  }
+
   function dedupeAndFilter(items,requestedMode){
     const seen=new Set();
 
-    const safe = items
+    let safe = items
       .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode,x.snippet||""))
       .filter(x=>{
         const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
@@ -551,10 +614,16 @@
         return true;
       });
 
-    // Uplifting does not demand a positive keyword. It removes negative material first,
-    // then ranks constructive/hopeful/interesting stories above neutral ones.
+    // Context-aware tone:
+    // Uplifting removes only strongly negative stories, then ranks the best tone first.
+    // Gentle removes only very strongly negative stories.
+    // Need-to-Know applies no tone threshold (but war/politics/crime remain excluded).
     if(requestedMode==="uplifting"){
-      safe.sort((a,b)=>constructiveScore(b)-constructiveScore(a));
+      safe = safe.filter(item => toneScore(item) > -3);
+      safe.sort((a,b)=>toneScore(b)-toneScore(a));
+    }else if(requestedMode==="gentle"){
+      safe = safe.filter(item => toneScore(item) > -5);
+      safe.sort((a,b)=>toneScore(b)-toneScore(a));
     }
 
     return safe.slice(0,24);
@@ -679,15 +748,15 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved10",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved11",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> pulls broad current stories first, filters OUT negative/distressing coverage, then ranks constructive and interesting stories first. A headline does not need a special ‘positive’ word to appear.",
-      gentle:"<strong>🌿 Gentle:</strong> keeps positive and neutral coverage, while filtering out graphic, crime-heavy and fear-heavy stories.",
+      uplifting:"<strong>☀️ Uplifting:</strong> blocks war, politics and crime, then judges everything else by context and tone. Individual words such as “death,” “warning,” or “risk” are not automatic blockers.",
+      gentle:"<strong>🌿 Gentle:</strong> also blocks war, politics and crime, but otherwise allows positive and neutral stories and only removes very strongly negative coverage.",
       need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
     $("mood").className=`mood ${mode}`;$("mood").innerHTML=copy[mode];
@@ -707,7 +776,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode10",mode);
+    localStorage.setItem("bnMode11",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
