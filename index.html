@@ -150,7 +150,7 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Uplifting now requires a genuinely positive or constructive headline, not simply the absence of a bad word. Bright News also blocks crime, lockdowns, weapons, arrests, tragedy, fear-heavy language and strongly negative outcomes. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Uplifting searches specifically for constructive stories across a wider 7-day window while continuing to block crime, lockdowns, weapons, arrests, tragedy, fear-heavy language and strongly negative outcomes. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
@@ -212,42 +212,53 @@
     "helps","helping","support","supports","supported","hope","hopeful","promising","encouraging",
     "clean energy","renewable","solar","trees planted","tree planting","community garden","free program",
     "free event","new library","library expands","healthier","safer","accessible","accessibility",
-    "kindness","reunited","reunion","celebrates opening","kicks off","highlighting community partnerships"
+    "kindness","reunited","reunion","celebrates opening","kicks off","highlighting community partnerships",
+    "recognized","recognised","named","selected","chosen","honored","honoured","unveils","unveiled","debut",
+    "debuted","first ever","first-ever","sets record","record-setting","record breaking","record-breaking",
+    "earns","earned","receives","received","receives grant","gets grant","secures grant","funds","funded",
+    "opens doors","welcomes","welcome","returns","returning","revives","revival","revitalizes","revitalises",
+    "expands access","increases access","free admission","free classes","free meals","free books","new exhibit",
+    "new center","new centre","new trail","new park","new space","new service","new resource","new scholarship",
+    "new partnership","new collaboration","collaboration","teams up","team up","joins forces","celebrates",
+    "anniversary","birthday","graduates","graduate","graduates celebrate","student success","students succeed",
+    "wins award","award winner","award-winning","raises funds","fundraiser","fundraising","donates",
+    "surpasses goal","meets goal","exceeds goal","boosts","boost","extends","extended","improves access",
+    "improves care","promising results","encouraging results","positive results","good news"
   ];
 
   const queries = {
     All:{
-      uplifting:'(breakthrough OR discovery OR innovation OR achievement OR award OR volunteer OR partnership OR conservation OR restored OR rescue OR "new program" OR "community garden" OR opens OR reopens OR celebrates OR scholarship OR milestone) when:2d',
+      uplifting:'("good news" OR breakthrough OR discovery OR achievement OR award OR volunteer OR grant OR partnership OR conservation OR rescue OR restored OR reopens OR celebrates OR scholarship OR milestone OR "new program" OR "community garden" OR "positive results") when:7d',
       gentle:'(discovery OR research OR community OR education OR innovation OR culture OR environment OR local OR opens OR launches OR improves) when:2d',
       need:'(science OR technology OR weather OR business OR education OR transportation OR health OR consumer) when:1d'
     },
     Science:{
-      uplifting:'(breakthrough OR discovery OR innovation OR promising OR achievement OR milestone OR award OR successful OR improves) (science OR research OR space OR medicine OR technology) when:3d',
+      uplifting:'(breakthrough OR discovery OR promising OR achievement OR milestone OR award OR "positive results" OR "encouraging results" OR record OR innovation) (science OR research OR space OR medicine OR technology) when:7d',
       gentle:'(science OR research OR space OR technology OR medicine OR discovery) when:2d',
       need:'(science OR technology OR health OR research OR weather) when:1d'
     },
     Community:{
-      uplifting:'(volunteer OR donation OR grant OR partnership OR "new program" OR opens OR reopens OR celebrates OR award OR scholarship OR restoration OR "community garden" OR expansion) (community OR school OR library OR neighborhood OR nonprofit OR town OR city) when:3d',
+      uplifting:'(volunteer OR donation OR grant OR partnership OR scholarship OR restoration OR "community garden" OR "new program" OR "new center" OR "new service" OR reopens OR celebrates OR award OR fundraiser OR "student success") (community OR school OR library OR neighborhood OR nonprofit OR town OR city) when:7d',
       gentle:'(community OR local OR school OR library OR neighborhood OR education OR business) when:2d',
       need:'(local OR community OR education OR transportation OR consumer) when:1d'
     },
     Animals:{
-      uplifting:'(rescue OR rescued OR adoption OR recovery OR conservation OR protected OR rebound OR returns OR milestone) (animal OR wildlife OR dog OR cat OR turtle OR whale OR bird OR species) when:3d',
+      uplifting:'(rescue OR rescued OR adoption OR recovery OR conservation OR protected OR rebound OR returns OR milestone OR released OR rehabilitated) (animal OR wildlife OR dog OR cat OR turtle OR whale OR bird OR species) when:7d',
       gentle:'(animals OR wildlife OR conservation OR zoo OR pets OR species) when:2d',
       need:'(wildlife OR animal OR conservation OR environment) when:2d'
     },
     Environment:{
-      uplifting:'(conservation OR renewable OR solar OR restoration OR protected OR clean OR planted OR recovery OR improvement OR milestone) (environment OR habitat OR trees OR water OR nature OR energy) when:3d',
+      uplifting:'(conservation OR renewable OR solar OR restoration OR protected OR clean OR planted OR recovery OR improvement OR milestone OR restored OR "clean water" OR "new park" OR "new trail") (environment OR habitat OR trees OR water OR nature OR energy) when:7d',
       gentle:'(environment OR climate OR renewable OR nature OR conservation OR energy) when:2d',
       need:'(environment OR weather OR energy OR climate OR transportation) when:1d'
     },
     Culture:{
-      uplifting:'(opens OR reopens OR celebrates OR award OR festival OR restored OR restoration OR milestone OR debut OR honored) (art OR music OR theater OR theatre OR museum OR book OR author OR restaurant OR culture) when:3d',
+      uplifting:'(opens OR reopens OR celebrates OR award OR festival OR restored OR restoration OR milestone OR debut OR honored OR recognised OR recognized OR anniversary OR "new exhibit") (art OR music OR theater OR theatre OR museum OR book OR author OR restaurant OR culture) when:7d',
       gentle:'(culture OR art OR music OR film OR theater OR museum OR books OR food) when:2d',
       need:'(culture OR entertainment OR arts OR media) when:1d'
     },
     Sports:{
-      uplifting:'(wins OR victory OR championship OR milestone OR record OR comeback OR award OR honored) sports when:2d',
+      uplifting:'(wins OR victory OR championship OR milestone OR record OR comeback OR award OR honored OR selected OR qualifies OR qualification) sports when:7d',
       gentle:'(sports OR team OR player OR tournament OR championship) when:1d',
       need:'(sports OR league OR team OR tournament) when:1d'
     }
@@ -271,8 +282,13 @@
 
     if (requestedMode === "uplifting") {
       if (hasAny(title, negativeFrame)) return false;
-      // Positive-only mode: a headline must actually signal something constructive.
-      if (!hasAny(title, positiveSignals)) return false;
+
+      // The Google query itself is explicitly constructive. A positive signal boosts
+      // confidence, but we no longer reject an otherwise safe headline solely because
+      // the exact wording is not in our dictionary.
+      const positive = hasAny(title, positiveSignals);
+      const neutralAllowed = !hasAny(title, negativeFrame) && !hasAny(title, hardBlock);
+      if (!positive && !neutralAllowed) return false;
     }
 
     if (requestedMode === "gentle") {
@@ -477,7 +493,7 @@
       render(lastGoodItems,lastGoodSource,true);
     }else{
       $("count").textContent="No safe stories right now";
-      $("emptyText").textContent="Bright News couldn't find current stories that passed this safety level. It will not fill the page with negative headlines just to have more results. Try again later or switch to Gentle.";
+      $("emptyText").textContent="Bright News didn’t get enough uplifting results from the live feed on this try. Tap Try again — it now searches a wider 7-day window while keeping the negative-story shield in place.";
       $("empty").style.display="block";
     }
   }
