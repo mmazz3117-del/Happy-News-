@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v14</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v15</div>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
       <button class="cat" data-cat="Sports">🏆 Sports</button>
     </div>
 
-    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v14 context-aware and category-relevance filters before displaying stories. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
+    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v15 context-aware/category-relevance filters. Quick preview now tries to resolve the publisher link and pull a real excerpt before falling back to RSS text. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
 
     <div class="loading show" id="loading"><div class="spinner"></div><div id="loadingText">Finding today's brighter stories…</div></div>
     <div class="stories" id="stories"></div>
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News v14 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
+      <p>Bright News v15 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v14</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v15</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode14") || "uplifting";
+  let mode = localStorage.getItem("bnMode15") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,7 +176,7 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved14") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved15") || "[]"));
   const expanded = new Set();
   const previewCache = new Map();
   const previewLoading = new Set();
@@ -799,6 +799,84 @@
     }
   }
 
+  function looksLikeGoogleNewsUrl(url){
+    try{
+      const u = new URL(url);
+      return /(^|\.)news\.google\.com$/i.test(u.hostname);
+    }catch(e){ return false; }
+  }
+
+  function isUsablePublisherUrl(url){
+    try{
+      const u = new URL(url);
+      if(!/^https?:$/i.test(u.protocol)) return false;
+      if(/(^|\.)news\.google\.com$/i.test(u.hostname)) return false;
+      if(/(^|\.)google\.com$/i.test(u.hostname)) return false;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function normalizedWords(text){
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g,' ')
+      .replace(/\s+/g,' ')
+      .trim()
+      .split(' ')
+      .filter(Boolean);
+  }
+
+  function similarityRatio(a,b){
+    const aw = normalizedWords(a), bw = normalizedWords(b);
+    if(!aw.length || !bw.length) return 0;
+    const aset = new Set(aw), bset = new Set(bw);
+    let shared = 0;
+    aset.forEach(w => { if(bset.has(w)) shared++; });
+    return shared / Math.max(1, Math.min(aset.size,bset.size));
+  }
+
+  async function fetchTextWithTimeout(url, timeout=12000){
+    const controller = new AbortController();
+    const timer = setTimeout(()=>controller.abort(), timeout);
+    try{
+      const response = await fetch(url,{signal:controller.signal,cache:'no-store'});
+      if(!response.ok) return '';
+      return await response.text();
+    }catch(e){
+      return '';
+    }finally{
+      clearTimeout(timer);
+    }
+  }
+
+  function externalUrlsFromReader(raw){
+    const urls = String(raw || '').match(/https?:\/\/[^\s)\]}>"']+/g) || [];
+    const out = [];
+    for(const candidate of urls){
+      const cleaned = candidate.replace(/[.,;]+$/,'');
+      if(isUsablePublisherUrl(cleaned) && !out.includes(cleaned)) out.push(cleaned);
+    }
+    return out;
+  }
+
+  async function resolvePublisherUrl(item){
+    const original = String(item.url || '').trim();
+    if(!original) return '';
+    if(isUsablePublisherUrl(original)) return original;
+
+    if(looksLikeGoogleNewsUrl(original)){
+      const raw = await fetchTextWithTimeout(`https://r.jina.ai/${original}`,10000);
+      if(raw){
+        const sourceMatch = raw.match(/^URL Source:\s*(https?:\/\/\S+)/mi);
+        if(sourceMatch && isUsablePublisherUrl(sourceMatch[1])) return sourceMatch[1].trim();
+
+        const urls = externalUrlsFromReader(raw);
+        if(urls.length) return urls[0];
+      }
+    }
+    return original;
+  }
+
   function clampPreview(text, maxChars=520){
     const clean = String(text || "").replace(/\s+/g," ").trim();
     if(clean.length <= maxChars) return clean;
@@ -814,80 +892,93 @@
   }
 
   function usefulRssSnippet(item){
-    let s = String(item.snippet || "").replace(/\s+/g," ").trim();
-    const title = String(item.title || "").replace(/\s+/g," ").trim();
+    let s = decodeEntities(String(item.snippet || '')).replace(/\s+/g,' ').trim();
+    const title = decodeEntities(String(item.title || '')).replace(/\s+/g,' ').trim();
+    if(!s) return '';
 
-    if(!s) return "";
-    if(title && s.toLowerCase() === title.toLowerCase()) return "";
-
-    // Google News RSS descriptions sometimes repeat the headline/source.
+    s = s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
     if(title && s.toLowerCase().startsWith(title.toLowerCase())){
-      s = s.slice(title.length).replace(/^[\s\-–—:|]+/,"").trim();
+      s = s.slice(title.length).replace(/^[\s\-–—:|]+/,'').trim();
     }
 
-    if(s.length < 80) return "";
-    return clampPreview(s,480);
+    if(title && similarityRatio(title,s) > 0.72) return '';
+    const source = String(item.publisher || '').trim();
+    if(source && similarityRatio(source,s) > 0.85) return '';
+    if(s.length < 100) return '';
+    return clampPreview(s,520);
   }
 
   function cleanReaderText(raw, item){
-    const title = String(item.title || "").trim().toLowerCase();
-    const blocks = String(raw || "")
-      .replace(/\r/g,"")
+    const title = decodeEntities(String(item.title || '')).replace(/\s+/g,' ').trim();
+    const publisher = decodeEntities(String(item.publisher || '')).replace(/\s+/g,' ').trim();
+
+    const blocks = String(raw || '')
+      .replace(/\r/g,'')
       .split(/\n\s*\n/)
       .map(block => block
-        .replace(/^Title:\s*.*$/gmi,"")
-        .replace(/^URL Source:\s*.*$/gmi,"")
-        .replace(/^Published Time:\s*.*$/gmi,"")
-        .replace(/^Markdown Content:\s*$/gmi,"")
-        .replace(/!\[[^\]]*\]\([^)]+\)/g,"")
-        .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1")
-        .replace(/^#{1,6}\s+/gm,"")
-        .replace(/^>\s?/gm,"")
-        .replace(/^\s*[-*]\s+/gm,"")
-        .replace(/\s+/g," ")
+        .replace(/^Title:\s*.*$/gmi,'')
+        .replace(/^URL Source:\s*.*$/gmi,'')
+        .replace(/^Published Time:\s*.*$/gmi,'')
+        .replace(/^Markdown Content:\s*$/gmi,'')
+        .replace(/!\[[^\]]*\]\([^)]+\)/g,'')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
+        .replace(/^#{1,6}\s+/gm,'')
+        .replace(/^>\s?/gm,'')
+        .replace(/^\s*[-*]\s+/gm,'')
+        .replace(/\s+/g,' ')
         .trim())
       .filter(Boolean);
 
     const skipPhrases = [
-      "subscribe","sign up","advertisement","privacy policy","cookie policy",
-      "all rights reserved","read more","newsletter","enable javascript",
-      "please verify","access denied"
+      'subscribe','sign up','advertisement','privacy policy','cookie policy',
+      'all rights reserved','read more','newsletter','enable javascript','please verify',
+      'access denied','terms of use','already a subscriber','log in','sign in','skip to content'
     ];
 
     const chosen = [];
     for(const block of blocks){
       const low = block.toLowerCase();
-      if(block.length < 90) continue;
-      if(title && low === title) continue;
+      if(block.length < 95) continue;
       if(skipPhrases.some(p => low.includes(p))) continue;
       if(/^https?:\/\//i.test(block)) continue;
-
+      if(title && similarityRatio(title,block) > 0.70) continue;
+      if(publisher && similarityRatio(publisher,block) > 0.85) continue;
       chosen.push(block);
-      if(chosen.join(" ").length >= 430 || chosen.length >= 2) break;
+      if(chosen.join(' ').length >= 540 || chosen.length >= 3) break;
     }
 
-    return clampPreview(chosen.join(" "),520);
+    const preview = clampPreview(chosen.join(' '),560);
+    if(title && preview && similarityRatio(title,preview) > 0.70) return '';
+    return preview;
   }
 
   async function fetchArticlePreview(item){
     const rssFallback = usefulRssSnippet(item);
+    const resolvedUrl = await resolvePublisherUrl(item);
 
-    try{
-      const controller = new AbortController();
-      const timer = setTimeout(()=>controller.abort(),12000);
-      const readerUrl = `https://r.jina.ai/${item.url}`;
-      const response = await fetch(readerUrl,{signal:controller.signal,cache:"no-store"});
-      clearTimeout(timer);
-
-      if(response.ok){
-        const raw = await response.text();
+    // First choice: actual publisher page.
+    if(resolvedUrl){
+      const raw = await fetchTextWithTimeout(`https://r.jina.ai/${resolvedUrl}`,14000);
+      if(raw){
         const extracted = cleanReaderText(raw,item);
         if(extracted) return extracted;
       }
-    }catch(e){}
+    }
 
+    // Second chance: original Google News wrapper, because some feeds expose
+    // readable article text there even when publisher resolution fails.
+    if(item.url && resolvedUrl !== item.url){
+      const raw = await fetchTextWithTimeout(`https://r.jina.ai/${item.url}`,10000);
+      if(raw){
+        const extracted = cleanReaderText(raw,item);
+        if(extracted) return extracted;
+      }
+    }
+
+    // Final fallback: RSS description only if it contains meaningful new text.
     if(rssFallback) return rssFallback;
-    return "This news source did not provide enough article text for a useful preview. Tap Read full story to continue.";
+
+    return 'A useful preview isn’t available from this source, but the full article can still be opened with Read full story.';
   }
 
   async function ensurePreview(item, items, source, preserveMessage){
@@ -929,8 +1020,8 @@
           </div>
           ${open?`<div class="warning"><strong>Quick preview</strong>${
             previewLoading.has(s.id)
-              ? "Loading a brief preview from the article…"
-              : escapeHTML(previewCache.get(s.id) || usefulRssSnippet(s) || "Loading a brief preview from the article…")
+              ? "Loading a brief article preview…"
+              : escapeHTML(previewCache.get(s.id) || usefulRssSnippet(s) || "Loading a brief article preview…")
           }</div>`:""}
           <div class="actions">
             <a class="read" href="${escapeHTML(s.url)}" target="_blank" rel="noopener noreferrer">Read full story ↗</a>
@@ -957,7 +1048,7 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved14",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved15",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
@@ -1008,7 +1099,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode14",mode);
+    localStorage.setItem("bnMode15",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
