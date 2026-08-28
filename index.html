@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v12</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v14</div>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
       <button class="cat" data-cat="Sports">🏆 Sports</button>
     </div>
 
-    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v11 context-aware filter before displaying stories. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
+    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, then applies the v14 context-aware and category-relevance filters before displaying stories. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
 
     <div class="loading show" id="loading"><div class="spinner"></div><div id="loadingText">Finding today's brighter stories…</div></div>
     <div class="stories" id="stories"></div>
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News v12 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
+      <p>Bright News v14 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v12</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v14</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode12") || "uplifting";
+  let mode = localStorage.getItem("bnMode14") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,8 +176,10 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved12") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved14") || "[]"));
   const expanded = new Set();
+  const previewCache = new Map();
+  const previewLoading = new Set();
 
   // v11 HARD EXCLUSIONS:
   // Only these topic families are removed by keywords/patterns:
@@ -266,6 +268,23 @@
     "protected habitat","nesting numbers rise","new species","baby animals","newborn","hatches",
     "hatchlings","wildlife success","saved by","sanctuary","fostered","therapy dog","service dog"
   ];
+
+  // Category relevance is separate from emotional filtering.
+  // An Animals story must actually mention an animal/wildlife concept in the
+  // headline or feed description. This prevents unrelated stories (for example,
+  // a Coast Guard rescue near the Galapagos) from slipping into Animals.
+  const animalRelevanceTerms = [
+    "animal","animals","wildlife","pet","pets","dog","dogs","puppy","puppies","canine",
+    "cat","cats","kitten","kittens","feline","bird","birds","eagle","eagles","owl","owls",
+    "whale","whales","dolphin","dolphins","turtle","turtles","mammal","mammals","fish",
+    "shark","sharks","horse","horses","elephant","elephants","penguin","penguins","seal",
+    "seals","bear","bears","wolf","wolves","deer","moose","species","zoo","shelter",
+    "humane society","veterinary","veterinarian","livestock","cattle","cow","cows","pig",
+    "pigs","chicken","chickens","reptile","reptiles","amphibian","amphibians","primate",
+    "primates","monkey","monkeys","gorilla","gorillas","insect","insects","bee","bees",
+    "butterfly","butterflies","habitat for wildlife","marine life","sea life"
+  ];
+
 
 
   // Positive terms are used for RANKING only — never as a requirement to pass Uplifting.
@@ -622,6 +641,13 @@
     return toneScore(item);
   }
 
+  function categoryRelevant(item, requestedCategory){
+    if(requestedCategory !== "Animals") return true;
+
+    const context = normalized(`${item.title || ""} ${item.snippet || ""}`);
+    return animalRelevanceTerms.some(term => context.includes(term));
+  }
+
   function categoryAdjustedScore(item, requestedMode, requestedCategory){
     let score = toneScore(item);
     const context = normalized(`${item.title || ""} ${item.snippet || ""}`);
@@ -658,7 +684,9 @@
     const seen=new Set();
 
     let safe = items
-      .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode,x.snippet||""))
+      .filter(x=>x&&x.title&&x.url)
+      .filter(x=>categoryRelevant(x,requestedCategory))
+      .filter(x=>passesBrightShield(x.title,requestedMode,x.snippet||""))
       .filter(x=>{
         const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
         if(!k||seen.has(k)) return false;
@@ -771,6 +799,112 @@
     }
   }
 
+  function clampPreview(text, maxChars=520){
+    const clean = String(text || "").replace(/\s+/g," ").trim();
+    if(clean.length <= maxChars) return clean;
+
+    const slice = clean.slice(0,maxChars);
+    const lastSentence = Math.max(
+      slice.lastIndexOf(". "),
+      slice.lastIndexOf("! "),
+      slice.lastIndexOf("? ")
+    );
+    if(lastSentence > 220) return slice.slice(0,lastSentence+1).trim();
+    return slice.trimEnd() + "…";
+  }
+
+  function usefulRssSnippet(item){
+    let s = String(item.snippet || "").replace(/\s+/g," ").trim();
+    const title = String(item.title || "").replace(/\s+/g," ").trim();
+
+    if(!s) return "";
+    if(title && s.toLowerCase() === title.toLowerCase()) return "";
+
+    // Google News RSS descriptions sometimes repeat the headline/source.
+    if(title && s.toLowerCase().startsWith(title.toLowerCase())){
+      s = s.slice(title.length).replace(/^[\s\-–—:|]+/,"").trim();
+    }
+
+    if(s.length < 80) return "";
+    return clampPreview(s,480);
+  }
+
+  function cleanReaderText(raw, item){
+    const title = String(item.title || "").trim().toLowerCase();
+    const blocks = String(raw || "")
+      .replace(/\r/g,"")
+      .split(/\n\s*\n/)
+      .map(block => block
+        .replace(/^Title:\s*.*$/gmi,"")
+        .replace(/^URL Source:\s*.*$/gmi,"")
+        .replace(/^Published Time:\s*.*$/gmi,"")
+        .replace(/^Markdown Content:\s*$/gmi,"")
+        .replace(/!\[[^\]]*\]\([^)]+\)/g,"")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g,"$1")
+        .replace(/^#{1,6}\s+/gm,"")
+        .replace(/^>\s?/gm,"")
+        .replace(/^\s*[-*]\s+/gm,"")
+        .replace(/\s+/g," ")
+        .trim())
+      .filter(Boolean);
+
+    const skipPhrases = [
+      "subscribe","sign up","advertisement","privacy policy","cookie policy",
+      "all rights reserved","read more","newsletter","enable javascript",
+      "please verify","access denied"
+    ];
+
+    const chosen = [];
+    for(const block of blocks){
+      const low = block.toLowerCase();
+      if(block.length < 90) continue;
+      if(title && low === title) continue;
+      if(skipPhrases.some(p => low.includes(p))) continue;
+      if(/^https?:\/\//i.test(block)) continue;
+
+      chosen.push(block);
+      if(chosen.join(" ").length >= 430 || chosen.length >= 2) break;
+    }
+
+    return clampPreview(chosen.join(" "),520);
+  }
+
+  async function fetchArticlePreview(item){
+    const rssFallback = usefulRssSnippet(item);
+
+    try{
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(),12000);
+      const readerUrl = `https://r.jina.ai/${item.url}`;
+      const response = await fetch(readerUrl,{signal:controller.signal,cache:"no-store"});
+      clearTimeout(timer);
+
+      if(response.ok){
+        const raw = await response.text();
+        const extracted = cleanReaderText(raw,item);
+        if(extracted) return extracted;
+      }
+    }catch(e){}
+
+    if(rssFallback) return rssFallback;
+    return "This news source did not provide enough article text for a useful preview. Tap Read full story to continue.";
+  }
+
+  async function ensurePreview(item, items, source, preserveMessage){
+    if(!item || previewCache.has(item.id) || previewLoading.has(item.id)) return;
+
+    previewLoading.add(item.id);
+    render(items,source,preserveMessage);
+
+    const preview = await fetchArticlePreview(item);
+    previewCache.set(item.id,preview);
+    previewLoading.delete(item.id);
+
+    if(expanded.has(item.id)){
+      render(items,source,preserveMessage);
+    }
+  }
+
   function render(items,source,preserveMessage=false){
     const box=$("stories");box.innerHTML="";
     $("liveBadge").innerHTML='<span class="dot"></span><span>LIVE</span>';
@@ -793,22 +927,37 @@
               <div class="publisher">${escapeHTML(decodeEntities(s.publisher))}</div>
             </div>
           </div>
-          ${open?`<div class="warning"><strong>Before you open it</strong>Bright News screened this headline, but the outside news page may contain other headlines, advertisements or images that Bright News cannot filter.</div>`:""}
+          ${open?`<div class="warning"><strong>Quick preview</strong>${
+            previewLoading.has(s.id)
+              ? "Loading a brief preview from the article…"
+              : escapeHTML(previewCache.get(s.id) || usefulRssSnippet(s) || "Loading a brief preview from the article…")
+          }</div>`:""}
           <div class="actions">
             <a class="read" href="${escapeHTML(s.url)}" target="_blank" rel="noopener noreferrer">Read full story ↗</a>
-            <button class="save" data-note="${escapeHTML(s.id)}">${open?"Hide note":"Preview note"}</button>
+            <button class="save" data-preview="${escapeHTML(s.id)}">${open?"Hide preview":"Quick preview"}</button>
             <button class="save" data-save="${escapeHTML(s.id)}">${saved.has(s.id)?"♥ Saved":"♡ Save"}</button>
           </div>
         </div>`;
       box.appendChild(article);
     });
 
-    box.querySelectorAll("[data-note]").forEach(b=>b.addEventListener("click",()=>{
-      const id=b.dataset.note;expanded.has(id)?expanded.delete(id):expanded.add(id);render(items,source,preserveMessage)
+    box.querySelectorAll("[data-preview]").forEach(b=>b.addEventListener("click",async()=>{
+      const id=b.dataset.preview;
+      const item=items.find(x=>String(x.id)===String(id));
+
+      if(expanded.has(id)){
+        expanded.delete(id);
+        render(items,source,preserveMessage);
+        return;
+      }
+
+      expanded.add(id);
+      render(items,source,preserveMessage);
+      await ensurePreview(item,items,source,preserveMessage);
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved12",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved14",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
@@ -823,10 +972,33 @@
   }
 
   function setDate(){
-    const d=new Date(),h=d.getHours();
+    const d = new Date();
+
+    // Use the device/browser's CURRENT local clock each time this runs.
+    // Installed iPhone web apps can stay suspended in memory overnight, so
+    // the greeting must be refreshed whenever the app becomes visible again.
+    let h = d.getHours();
+    try{
+      const parts = new Intl.DateTimeFormat(undefined,{
+        hour:"2-digit",
+        hourCycle:"h23"
+      }).formatToParts(d);
+      const hourPart = parts.find(p=>p.type==="hour");
+      if(hourPart && !Number.isNaN(Number(hourPart.value))){
+        h = Number(hourPart.value);
+      }
+    }catch(e){}
+
     $("dow").textContent=d.toLocaleDateString(undefined,{weekday:"short"}).toUpperCase();
-    $("day").textContent=d.getDate();$("mon").textContent=d.toLocaleDateString(undefined,{month:"short"}).toUpperCase();
-    $("greeting").textContent=(h<12?"Good morning":h<17?"Good afternoon":"Good evening")+" 👋";
+    $("day").textContent=d.getDate();
+    $("mon").textContent=d.toLocaleDateString(undefined,{month:"short"}).toUpperCase();
+
+    const greeting =
+      h < 12 ? "Good morning" :
+      h < 18 ? "Good afternoon" :
+      "Good evening";
+
+    $("greeting").textContent=greeting+" 👋";
   }
 
   function startPreload(){
@@ -836,7 +1008,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode12",mode);
+    localStorage.setItem("bnMode14",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
@@ -877,7 +1049,20 @@
   $("refresh").addEventListener("click",()=>{feedCache.delete(currentKey());load()});
   $("retry").addEventListener("click",load);
 
-  setDate();updateMode();load().then(startPreload);
+  setDate();
+  updateMode();
+  load().then(startPreload);
+
+  // Refresh local date/greeting whenever an installed PWA resumes from sleep,
+  // when Safari restores it from the back/forward cache, and periodically
+  // while it remains open.
+  window.addEventListener("pageshow",setDate);
+  document.addEventListener("visibilitychange",()=>{
+    if(!document.hidden) setDate();
+  });
+  window.addEventListener("focus",setDate);
+  setInterval(setDate,60000);
+
   if("serviceWorker" in navigator){
     window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}))
   }
