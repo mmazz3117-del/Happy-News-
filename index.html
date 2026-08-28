@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v11</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v12</div>
     </div>
   </header>
 
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News v11 uses context-aware filtering. Only war, politics and crime are hard-excluded by topic keywords. Other potentially negative words are evaluated in context, so “deaths decline” is treated differently from “beloved actor dies.” Uplifting ranks constructive stories first; Gentle allows a broader neutral-positive mix. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Bright News v12 uses context-aware filtering. Only war, politics and crime are hard-excluded globally. Other words are judged in context, and categories can use stricter emotional thresholds where appropriate. Animals now suppresses clearly sad outcomes such as mortality, disease and animals dying unless the context is a positive recovery/resolution story.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v11</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v12</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode11") || "uplifting";
+  let mode = localStorage.getItem("bnMode12") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,7 +176,7 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved11") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved12") || "[]"));
   const expanded = new Set();
 
   // v11 HARD EXCLUSIONS:
@@ -248,6 +248,26 @@
     "warning lifted","lockdown lifted","restrictions lifted","threat reduced","threat eliminated"
   ];
 
+  // Animal news needs a slightly stricter emotional filter in Uplifting/Gentle.
+  // These are category-specific context signals, not global keyword bans.
+  const animalStrongNegativePhrases = [
+    "dead whale","dead dolphin","dead dog","dead cat","dead bird","dead animal","dead animals",
+    "mass mortality","animal deaths","animals die","animals dying","dies after","died after",
+    "infected mammals","infected animals","bird flu fears","disease outbreak","outbreak among animals",
+    "euthanized","euthanised","put down","killed by","mauling","mauled","cruelty","animal cruelty",
+    "neglect case","starved","abandoned to die","dicing with death","in danger of dying",
+    "critically endangered","poisoned","poisoning","washed ashore dead","found dead"
+  ];
+
+  const animalPositivePhrases = [
+    "rescued","rescue","adopted","adoption","finds a home","find homes","forever home","reunited",
+    "released back","released into the wild","rehabilitated","recovery","population rebounds",
+    "population grows","numbers rise","returns to","species returns","conservation win",
+    "protected habitat","nesting numbers rise","new species","baby animals","newborn","hatches",
+    "hatchlings","wildlife success","saved by","sanctuary","fostered","therapy dog","service dog"
+  ];
+
+
   // Positive terms are used for RANKING only — never as a requirement to pass Uplifting.
   const positiveSignals = [
     "breakthrough","discovery","discovers","discovered","innovation","innovative","achievement","achieves",
@@ -292,7 +312,7 @@
       need:'local OR community OR education OR transportation OR consumer when:2d'
     },
     Animals:{
-      uplifting:'animals OR wildlife OR conservation OR pets OR dog OR cat OR bird OR turtle OR whale when:7d',
+      uplifting:'animals OR wildlife OR conservation OR rescue OR adoption OR pets OR dog OR cat OR bird OR turtle OR whale when:7d',
       gentle:'animals OR wildlife OR conservation OR zoo OR pets OR species when:5d',
       need:'wildlife OR animal OR conservation OR environment when:3d'
     },
@@ -511,11 +531,11 @@
           });
         });
 
-        const safeSoFar=dedupeAndFilter(merged,requestedMode);
+        const safeSoFar=dedupeAndFilter(merged,requestedMode,requestedCategory);
         if(!requestedSearch || safeSoFar.length>=8) break;
       }
 
-      const safe=dedupeAndFilter(merged,requestedMode);
+      const safe=dedupeAndFilter(merged,requestedMode,requestedCategory);
       if(safe.length) feedCache.set(key,safe);
 
       if(!safe.length && successfulFeedResponses===0){
@@ -556,7 +576,7 @@
         id:a.url||`${requestedCategory}-${i}`,title:decodeEntities(a.title),publisher:a.domain||"Publisher",
         url:a.url,date:a.seendate,snippet:"",emoji:emojis[requestedCategory]||"✨",
         tag:requestedCategory==="All"?"Backup Feed":requestedCategory
-      })),requestedMode);
+      })),requestedMode,requestedCategory);
     } finally{clearTimeout(timer)}
   }
 
@@ -602,7 +622,39 @@
     return toneScore(item);
   }
 
-  function dedupeAndFilter(items,requestedMode){
+  function categoryAdjustedScore(item, requestedMode, requestedCategory){
+    let score = toneScore(item);
+    const context = normalized(`${item.title || ""} ${item.snippet || ""}`);
+
+    if(requestedCategory === "Animals"){
+      animalPositivePhrases.forEach(phrase => {
+        if(context.includes(phrase)) score += 4;
+      });
+      animalStrongNegativePhrases.forEach(phrase => {
+        if(context.includes(phrase)) score -= 8;
+      });
+
+      // In animal news, isolated mortality/disease terms are stronger emotional signals
+      // unless the same headline clearly contains a positive resolution.
+      const hasPositiveResolution =
+        animalPositivePhrases.some(p => context.includes(p)) ||
+        positiveResolutionPhrases.some(p => context.includes(p));
+
+      if(!hasPositiveResolution){
+        const animalSadTerms = [
+          " dead "," death "," deaths "," mortality "," infected "," infection ",
+          " disease "," flu "," dies "," died "," danger "," endangered "
+        ];
+        animalSadTerms.forEach(term => {
+          if(context.includes(term)) score -= 2.5;
+        });
+      }
+    }
+
+    return score;
+  }
+
+  function dedupeAndFilter(items,requestedMode,requestedCategory="All"){
     const seen=new Set();
 
     let safe = items
@@ -619,11 +671,19 @@
     // Gentle removes only very strongly negative stories.
     // Need-to-Know applies no tone threshold (but war/politics/crime remain excluded).
     if(requestedMode==="uplifting"){
-      safe = safe.filter(item => toneScore(item) > -3);
-      safe.sort((a,b)=>toneScore(b)-toneScore(a));
+      const threshold = requestedCategory==="Animals" ? -0.5 : -3;
+      safe = safe.filter(item => categoryAdjustedScore(item,requestedMode,requestedCategory) > threshold);
+      safe.sort((a,b)=>
+        categoryAdjustedScore(b,requestedMode,requestedCategory) -
+        categoryAdjustedScore(a,requestedMode,requestedCategory)
+      );
     }else if(requestedMode==="gentle"){
-      safe = safe.filter(item => toneScore(item) > -5);
-      safe.sort((a,b)=>toneScore(b)-toneScore(a));
+      const threshold = requestedCategory==="Animals" ? -2.5 : -5;
+      safe = safe.filter(item => categoryAdjustedScore(item,requestedMode,requestedCategory) > threshold);
+      safe.sort((a,b)=>
+        categoryAdjustedScore(b,requestedMode,requestedCategory) -
+        categoryAdjustedScore(a,requestedMode,requestedCategory)
+      );
     }
 
     return safe.slice(0,24);
@@ -748,14 +808,14 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved11",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved12",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> blocks war, politics and crime, then judges everything else by context and tone. Individual words such as “death,” “warning,” or “risk” are not automatic blockers.",
+      uplifting:"<strong>☀️ Uplifting:</strong> blocks war, politics and crime, then judges everything else by context and tone. Categories can be more sensitive where needed — Animals now filters sad outcomes more strictly without turning those words into global bans.",
       gentle:"<strong>🌿 Gentle:</strong> also blocks war, politics and crime, but otherwise allows positive and neutral stories and only removes very strongly negative coverage.",
       need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
@@ -776,7 +836,7 @@
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode11",mode);
+    localStorage.setItem("bnMode12",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
@@ -796,7 +856,7 @@
 
   document.querySelectorAll(".cat").forEach(b=>b.addEventListener("click",()=>{
     category=b.dataset.cat;searchTerm="";$("searchInput").value="";
-    $("feedTitle").textContent=category==="All"?"Today's brighter headlines":`${category} headlines`;
+    $("feedTitle").textContent=category==="All"?"Today's brighter headlines":category==="Animals"?"Uplifting animal stories":`${category} headlines`;
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x===b));
     const key=`${mode}|${category}`;
     if(feedCache.has(key)){
