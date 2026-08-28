@@ -93,7 +93,10 @@
 <main class="app">
   <header class="topbar">
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
-    <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+      <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v7</div>
+    </div>
   </header>
 
   <section class="hero">
@@ -150,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Search now follows your selected comfort level too. Uplifting searches specifically for positive developments and requires a constructive signal; Gentle allows positive and neutral developments; Need-to-Know is intentionally broader. Crime, lockdowns, weapons, arrests, tragedy and fear-heavy headlines remain blocked from the gentler views. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Search follows your selected comfort level. Uplifting searches the topic broadly, blocks negative/distressing headlines and ranks the more constructive results first. Gentle allows positive and neutral developments. Need-to-Know is intentionally broader. Failed searches no longer show unrelated old stories. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
-  <div class="footer">Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v7</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -293,7 +296,8 @@
     if (requestedMode === "uplifting") {
       if (hasAny(title, negativeFrame)) return false;
       if (hasAny(title, upliftingPoliticsBlock)) return false;
-      if (!hasAny(title, positiveSignals)) return false;
+      // Safe results can pass even without an exact positivity keyword.
+      // Positive/constructive headlines are ranked higher later.
     }
 
     if (requestedMode === "gentle") {
@@ -352,18 +356,13 @@
     return searchTerm ? `search|${mode}|${searchTerm.toLowerCase()}` : `${mode}|${category}`;
   }
 
-  function buildSearchQuery(term, requestedMode){
+  function buildSearchQuery(term, requestedMode, daysOverride=null){
     const clean = String(term || "").replace(/[()"]/g," ").replace(/\s+/g," ").trim();
 
-    if (requestedMode === "uplifting") {
-      return `(${clean}) (breakthrough OR discovery OR innovation OR achievement OR award OR wins OR success OR successful OR progress OR promising OR improvement OR improves OR helps OR helping OR milestone OR grant OR partnership OR celebrates OR expansion OR opens OR launches OR conservation OR recovery OR scholarship) when:7d`;
-    }
-
-    if (requestedMode === "gentle") {
-      return `(${clean}) (research OR update OR development OR technology OR science OR business OR education OR community OR innovation OR culture OR environment OR health) when:5d`;
-    }
-
-    return `(${clean}) when:3d`;
+    // Search broadly for the user's actual topic.
+    // Bright News applies safety filtering and positivity ranking after retrieval.
+    const days = daysOverride || (requestedMode==="uplifting" ? 7 : requestedMode==="gentle" ? 5 : 3);
+    return `(${clean}) when:${days}d`;
   }
 
   function feedURL(q){
@@ -387,33 +386,54 @@
     if(feedCache.has(key)) return feedCache.get(key);
     if(pending.has(key)) return pending.get(key);
 
-    const q=requestedSearch
-      ? buildSearchQuery(requestedSearch, requestedMode)
-      : (queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
-
     const promise=(async()=>{
-      const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}`;
-      let data;
-      try{ data=await spacedFetch(endpoint); }
-      catch(e){ await sleep(2200); data=await spacedFetch(endpoint); }
+      const windows = requestedSearch
+        ? (requestedMode==="uplifting" ? [7,14] : requestedMode==="gentle" ? [5,10] : [3,7])
+        : [null];
 
-      if(!data || data.status!=="ok" || !Array.isArray(data.items)) throw new Error("rss");
+      let best = [];
 
-      const items=data.items.map((item,i)=>{
-        const sp=splitPublisher(item.title);
-        return {
-          id:item.guid||item.link||`${key}-${i}`,
-          title:sp.headline,publisher:sp.publisher,url:item.link,date:item.pubDate,
-          emoji:emojis[requestedCategory]||"✨",
-          tag:requestedCategory==="All"
-            ? (requestedMode==="uplifting"?"Bright Pick":requestedMode==="gentle"?"Gentle News":"Need-to-Know")
-            : requestedCategory
-        };
-      });
+      for(const days of windows){
+        const q=requestedSearch
+          ? buildSearchQuery(requestedSearch, requestedMode, days)
+          : (queries[requestedCategory]?.[requestedMode] || queries.All[requestedMode]);
 
-      const safe=dedupeAndFilter(items,requestedMode);
-      if(safe.length) feedCache.set(key,safe);
-      return safe;
+        const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}`;
+
+        let data;
+        try{
+          data=await spacedFetch(endpoint);
+        }catch(e){
+          await sleep(2200);
+          data=await spacedFetch(endpoint);
+        }
+
+        if(!data || data.status!=="ok" || !Array.isArray(data.items)) continue;
+
+        const items=data.items.map((item,i)=>{
+          const sp=splitPublisher(item.title);
+          return {
+            id:item.guid||item.link||`${key}-${days||"feed"}-${i}`,
+            title:sp.headline,
+            publisher:sp.publisher,
+            url:item.link,
+            date:item.pubDate,
+            emoji:emojis[requestedCategory]||"✨",
+            tag:requestedCategory==="All"
+              ? (requestedMode==="uplifting"?"Bright Pick":requestedMode==="gentle"?"Gentle News":"Need-to-Know")
+              : requestedCategory
+          };
+        });
+
+        const safe=dedupeAndFilter(items,requestedMode);
+        if(safe.length){
+          best=safe;
+          if(safe.length>=4 || !requestedSearch) break;
+        }
+      }
+
+      if(best.length) feedCache.set(key,best);
+      return best;
     })();
 
     pending.set(key,promise);
@@ -422,7 +442,7 @@
 
   async function gdeltBackup(token,requestedCategory,requestedMode,requestedSearch){
     let q=requestedSearch
-      ? buildSearchQuery(requestedSearch, requestedMode)
+      ? buildSearchQuery(requestedSearch, requestedMode, requestedMode==="uplifting"?14:requestedMode==="gentle"?10:7)
       : (queries[requestedCategory]?.[requestedMode]||queries.All[requestedMode]);
 
     let keywords=q.replace(/when:\d+d/g,"").replace(/[()"]/g," ").replace(/\s+/g," ").trim();
@@ -449,16 +469,43 @@
     } finally{clearTimeout(timer)}
   }
 
+  function positivityScore(title){
+    const t = normalized(title);
+    let score = 0;
+
+    positiveSignals.forEach(word => {
+      if (t.includes(word)) score += 3;
+    });
+
+    const bonus = [
+      "new ","opens","opening","reopens","launches","welcomes","celebrates","celebration",
+      "adoption","adopted","rescued","returns","record","award","grant","free ","festival",
+      "partnership","students","volunteers","restored","recovery","improves","expands","success"
+    ];
+    bonus.forEach(word => {
+      if (t.includes(word)) score += 1;
+    });
+
+    return score;
+  }
+
   function dedupeAndFilter(items,requestedMode){
     const seen=new Set();
-    return items
+
+    const safe = items
       .filter(x=>x&&x.title&&x.url&&passesBrightShield(x.title,requestedMode))
       .filter(x=>{
         const k=x.title.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
         if(!k||seen.has(k)) return false;
-        seen.add(k);return true;
-      })
-      .slice(0,20);
+        seen.add(k);
+        return true;
+      });
+
+    if(requestedMode==="uplifting"){
+      safe.sort((a,b)=>positivityScore(b.title)-positivityScore(a.title));
+    }
+
+    return safe.slice(0,20);
   }
 
   async function load(options={}){
@@ -503,16 +550,28 @@
     if(background) return;
     $("loading").classList.remove("show");$("refresh").disabled=false;
 
+    if(requestedSearch){
+      $("stories").innerHTML="";
+      $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":requestedMode==="gentle"?"gentle":"safe"} search results`;
+      $("emptyText").textContent=requestedMode==="uplifting"
+        ? `No uplifting stories about “${requestedSearch}” passed the Bright News Shield right now. I searched a wider 14-day window too. Try again later, or switch to Gentle for positive and neutral results.`
+        : requestedMode==="gentle"
+          ? `No gentle stories about “${requestedSearch}” passed the filter right now. Try again later or use Need-to-Know for a broader search.`
+          : `No current stories about “${requestedSearch}” were available from the live feed right now.`;
+      $("empty").style.display="block";
+      return;
+    }
+
     if(lastGoodItems.length){
       $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":"safe"} ${requestedCategory==="All"?"stories":requestedCategory+" stories"} found`;
       $("emptyText").textContent=requestedMode==="uplifting"
-        ? `Bright News didn't find enough genuinely uplifting ${requestedCategory==="All"?"stories":requestedCategory+" stories"} in the current feed. Rather than fill the page with negative news, your last successful Bright News feed stays below.`
+        ? `Bright News didn't find enough genuinely uplifting ${requestedCategory==="All"?"stories":requestedCategory+" stories"} in the current feed. Your last successful Bright News feed stays below.`
         : `This section couldn't refresh right now. Your last successful live stories remain below.`;
       $("empty").style.display="block";
       render(lastGoodItems,lastGoodSource,true);
     }else{
       $("count").textContent="No safe stories right now";
-      $("emptyText").textContent="Bright News didn’t get enough uplifting results from the live feed on this try. Tap Try again — it now searches a wider 7-day window while keeping the negative-story shield in place.";
+      $("emptyText").textContent="Bright News couldn't find current stories that passed this safety level. Try again later or switch to Gentle.";
       $("empty").style.display="block";
     }
   }
@@ -561,7 +620,7 @@
   function updateMode(){
     document.querySelectorAll(".mode").forEach(b=>b.classList.toggle("active",b.dataset.mode===mode));
     const copy={
-      uplifting:"<strong>☀️ Uplifting:</strong> searches specifically for positive developments in whatever topic you choose, then requires a constructive signal before showing the headline.",
+      uplifting:"<strong>☀️ Uplifting:</strong> searches the topic you choose broadly, blocks negative/distressing headlines, then ranks the more positive and constructive stories first.",
       gentle:"<strong>🌿 Gentle:</strong> searches the same topic more broadly for positive and neutral developments, while still blocking crime, tragedy and fear-heavy headlines.",
       need:"<strong>📰 Need-to-Know:</strong> intentionally gives you a broader practical view of science, health, weather, business, education and transportation."
     };
