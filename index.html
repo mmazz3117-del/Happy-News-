@@ -95,7 +95,7 @@
     <div class="brand"><img src="icon-192.png" alt=""><span>Bright News</span></div>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
       <div class="live" id="liveBadge"><span class="dot"></span><span>LIVE</span></div>
-      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v9</div>
+      <div style="font-size:11px;font-weight:850;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 9px">v10</div>
     </div>
   </header>
 
@@ -142,7 +142,7 @@
       <button class="cat" data-cat="Sports">🏆 Sports</button>
     </div>
 
-    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results, caches successful sections, and uses another live index as a backup. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
+    <div class="source-note"><strong>Real current stories:</strong> Bright News searches current Google News RSS results in small reliable batches, caches successful sections, and uses another live index as a backup. No article photos are loaded into this feed. Opening a story takes you to the original news result/publisher page.</div>
 
     <div class="loading show" id="loading"><div class="spinner"></div><div id="loadingText">Finding today's brighter stories…</div></div>
     <div class="stories" id="stories"></div>
@@ -153,11 +153,11 @@
     <div class="shield-icon">🛡️</div>
     <div>
       <h3>Bright News Shield</h3>
-      <p>Bright News now works by exclusion first: Uplifting searches broadly, removes negative/distressing coverage, then ranks constructive and useful stories higher. It does not require “positive” keywords. Gentle keeps positive and neutral coverage. Need-to-Know is intentionally broader. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
+      <p>Bright News v10 works by exclusion first: Uplifting searches broadly, removes negative/distressing coverage, then ranks constructive and useful stories higher. It does not require “positive” keywords. Gentle keeps positive and neutral coverage. Need-to-Know is intentionally broader. Publisher pages are outside Bright News, so they can still contain unrelated headlines or imagery.</p>
     </div>
   </section>
 
-  <div class="footer"><strong>Bright News · v9</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
+  <div class="footer"><strong>Bright News · v10</strong><br>Bright News is a filtered news reader, not an emergency-alert service. Automated filtering can miss context, so use Need-to-Know when you want a broader view.</div>
 </main>
 
 <script>
@@ -165,7 +165,7 @@
   "use strict";
   const $ = id => document.getElementById(id);
 
-  let mode = localStorage.getItem("bnMode9") || "uplifting";
+  let mode = localStorage.getItem("bnMode10") || "uplifting";
   if (!["uplifting","gentle","need"].includes(mode)) mode = "uplifting";
   let category = "All";
   let searchTerm = "";
@@ -176,7 +176,7 @@
 
   const feedCache = new Map();
   const pending = new Map();
-  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved9") || "[]"));
+  const saved = new Set(JSON.parse(localStorage.getItem("bnSaved10") || "[]"));
   const expanded = new Set();
 
   // Always blocked from the visible Bright News feed.
@@ -426,10 +426,11 @@
       }
 
       let merged=[];
+      let successfulFeedResponses=0;
       const seenLinks=new Set();
 
       for(const q of queryPlans){
-        const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}&count=50`;
+        const endpoint=`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feedURL(q))}`;
         let data;
         try{
           data=await spacedFetch(endpoint);
@@ -439,6 +440,7 @@
         }
 
         if(!data || data.status!=="ok" || !Array.isArray(data.items)) continue;
+        successfulFeedResponses++;
 
         data.items.forEach((item,i)=>{
           const sp=splitPublisher(item.title);
@@ -465,6 +467,13 @@
 
       const safe=dedupeAndFilter(merged,requestedMode);
       if(safe.length) feedCache.set(key,safe);
+
+      if(!safe.length && successfulFeedResponses===0){
+        const err=new Error("source-unavailable");
+        err.code="SOURCE_UNAVAILABLE";
+        throw err;
+      }
+
       return safe;
     })();
 
@@ -569,15 +578,19 @@
       else $("count").textContent=`Loading ${requestedCategory==="All"?"news":requestedCategory}…`;
     }
 
-    let items=[],source="Google News";
+    let items=[],source="Google News",primarySourceFailed=false,backupSourceFailed=false;
     try{
       items=await googleRSS(key,token,requestedCategory,requestedMode,requestedSearch);
       if(!items.length) throw new Error("noitems");
     }catch(e){
+      primarySourceFailed = e && (e.code==="SOURCE_UNAVAILABLE" || e.message==="source-unavailable");
       try{
         source="Backup live feed";
         items=await gdeltBackup(token,requestedCategory,requestedMode,requestedSearch);
-      }catch(e2){items=[]}
+      }catch(e2){
+        backupSourceFailed=true;
+        items=[];
+      }
     }
 
     if(items.length){
@@ -595,12 +608,17 @@
 
     if(requestedSearch){
       $("stories").innerHTML="";
-      $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":requestedMode==="gentle"?"gentle":"safe"} search results`;
-      $("emptyText").textContent=requestedMode==="uplifting"
-        ? `No safe uplifting stories about “${requestedSearch}” were returned from the live sources on this try. Bright News searched the topic broadly and also checked constructive subject areas before giving up. Try Refresh in a moment or switch to Gentle.`
-        : requestedMode==="gentle"
-          ? `No gentle stories about “${requestedSearch}” passed the filter right now. Try again later or use Need-to-Know for a broader search.`
-          : `No current stories about “${requestedSearch}” were available from the live feed right now.`;
+      if(primarySourceFailed && backupSourceFailed){
+        $("count").textContent="Live news sources unavailable";
+        $("emptyText").textContent=`Bright News couldn't reach either live-news source while searching “${requestedSearch}”. This is a source/connection problem, not the filter. Tap Refresh in a moment.`;
+      }else{
+        $("count").textContent=`No ${requestedMode==="uplifting"?"uplifting":requestedMode==="gentle"?"gentle":"safe"} search results`;
+        $("emptyText").textContent=requestedMode==="uplifting"
+          ? `The live feed responded, but no stories about “${requestedSearch}” passed the Uplifting shield on this try. Try Refresh later or switch to Gentle for a wider neutral-positive view.`
+          : requestedMode==="gentle"
+            ? `The live feed responded, but no gentle stories about “${requestedSearch}” passed the filter right now.`
+            : `No current stories about “${requestedSearch}” were returned by the live feed right now.`;
+      }
       $("empty").style.display="block";
       return;
     }
@@ -613,8 +631,13 @@
       $("empty").style.display="block";
       render(lastGoodItems,lastGoodSource,true);
     }else{
-      $("count").textContent="No safe stories right now";
-      $("emptyText").textContent="Bright News didn’t get enough safe stories from the live feed on this try. The v9 feed now searches broad current topics rather than requiring positive keywords. Tap Refresh in a moment; Gentle remains available for a wider neutral-positive view.";
+      if(primarySourceFailed && backupSourceFailed){
+        $("count").textContent="Live news sources unavailable";
+        $("emptyText").textContent="Bright News couldn't reach either live-news source on this try. This is a connection/source problem, not the Uplifting filter. Tap Refresh in a moment.";
+      }else{
+        $("count").textContent="No safe stories right now";
+        $("emptyText").textContent="The live feed responded, but none of the returned headlines passed this safety level. Tap Refresh later or switch to Gentle for a wider neutral-positive view.";
+      }
       $("empty").style.display="block";
     }
   }
@@ -656,7 +679,7 @@
     }));
     box.querySelectorAll("[data-save]").forEach(b=>b.addEventListener("click",()=>{
       const id=b.dataset.save;saved.has(id)?saved.delete(id):saved.add(id);
-      localStorage.setItem("bnSaved9",JSON.stringify([...saved]));render(items,source,preserveMessage)
+      localStorage.setItem("bnSaved10",JSON.stringify([...saved]));render(items,source,preserveMessage)
     }));
   }
 
@@ -678,13 +701,13 @@
   }
 
   function startPreload(){
-    // v9: disabled intentionally. Loading categories only when tapped is more reliable
+    // v10: disabled intentionally. Loading categories only when tapped is more reliable
     // with the public/free news feeds and avoids unnecessary rate limiting.
   }
 
   document.querySelectorAll(".mode").forEach(b=>b.addEventListener("click",()=>{
     mode=b.dataset.mode;
-    localStorage.setItem("bnMode9",mode);
+    localStorage.setItem("bnMode10",mode);
     category="All";
     document.querySelectorAll(".cat").forEach(x=>x.classList.toggle("active",x.dataset.cat==="All"));
     updateMode();
